@@ -31,10 +31,10 @@ TEST(MatrixAccessTest, OutOfBoundsAccessRows) {
     EXPECT_THROW(mat[3][3], std::out_of_range);
 }
 
-// TEST(MatrixAccessTest, OutOfBoundsAccessCols) {
-//     TMatrix<> mat(3, 3, 1.0);
-//     EXPECT_THROW(mat[0][3], std::out_of_range);
-// }
+TEST(MatrixAccessTest, OutOfBoundsAccessCols) {
+    TMatrix<> mat(3, 3, 1.0);
+    EXPECT_THROW(mat[0][3], std::out_of_range);
+}
 
 TEST(MatrixAccessTest, Rows) {
     TMatrix<> mat(1, 1);
@@ -101,6 +101,80 @@ TEST(MatrixOperationsTest, MultiplicationIncorrect) {
 }
 
 
+TEST(MatrixOperationsTest, AdittionEqualScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    mat += 1;
+
+    TMatrix<> expected{{2, 3, 4}, {5, 6, 7}};
+    EXPECT_EQ(mat, expected);
+}
+
+TEST(MatrixOperationsTest, SubtractionEqualScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    mat -= 1;
+
+    TMatrix<> expected{{0, 1, 2}, {3, 4, 5}};
+    EXPECT_EQ(mat, expected);
+}
+
+TEST(MatrixOperationsTest, MultiplicationEqualScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    mat *= 2;
+
+    TMatrix<> expected{{2, 4, 6}, {8, 10, 12}};
+    EXPECT_EQ(mat, expected);
+}
+
+TEST(MatrixOperationsTest, DivisionEqualScalarCorrect) {
+    TMatrix<> mat{{2, 4, 6}, {8, 10, 12}};
+    mat /= 2;
+
+    TMatrix<> expected{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_EQ(mat, expected);
+}
+
+TEST(MatrixOperationsTest, DivisionEqualScalarIncorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_THROW(mat /= 0, std::runtime_error);
+}
+
+TEST(MatrixOperationsTest, AdittionScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    TMatrix<> result = mat + 1;
+
+    TMatrix<> expected{{2, 3, 4}, {5, 6, 7}};
+    EXPECT_EQ(result, expected);
+}
+
+TEST(MatrixOperationsTest, SubtractionScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    TMatrix<> result = mat - 1;
+
+    TMatrix<> expected{{0, 1, 2}, {3, 4, 5}};
+    EXPECT_EQ(result, expected);
+}
+
+TEST(MatrixOperationsTest, MultiplicationScalarCorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+    TMatrix<> result = mat * 2;
+
+    TMatrix<> expected{{2, 4, 6}, {8, 10, 12}};
+    EXPECT_EQ(result, expected);
+}
+
+TEST(MatrixOperationsTest, DivisionScalarCorrect) {
+    TMatrix<> mat{{2, 4, 6}, {8, 10, 12}};
+    TMatrix<> result = mat / 2;
+
+    TMatrix<> expected{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_EQ(result, expected);
+}
+
+TEST(MatrixOperationsTest, DivisionScalarIncorrect) {
+    TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
+
+    EXPECT_THROW(TMatrix<> result = mat / 0, std::runtime_error);
+}
 
 TEST(MatrixSpecialFunctionsTest, Transpose) {
     TMatrix<> mat{{1, 2, 3}, {4, 5, 6}};
@@ -120,7 +194,7 @@ TEST(MatrixSpecialFunctionsTest, Equality) {
 }
 
 TEST(MatrixSpecialFunctionsTest, Printing) {
-    NMatrix::TMatrix<int> matrix(2, 3, 1);
+    NMatrix::TMatrix<> matrix(2, 3, 1);
 
     std::stringstream output;
     output << matrix;
