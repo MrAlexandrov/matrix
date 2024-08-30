@@ -31,6 +31,6 @@ rebuild: clean build
 
 install:
 	sudo apt-get update
-	sudo apt-get install -y cmake clang libgtest-dev ctest
+	sudo apt-get install -y cmake clang libgtest-dev
 
 .PHONY: all build test clean rebuild install
