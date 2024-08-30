@@ -23,8 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y make cmake ctest clang libgtest-dev
+          sudo apt update
+          sudo apt install -y make cmake ctest clang libgtest-dev
 
       - name: Build and test project
         run: |
