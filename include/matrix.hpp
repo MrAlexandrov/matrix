@@ -18,9 +18,9 @@ private:
 
         constexpr ProxyRow(size_t cols, const T& value = T()) : ProxyData_(cols, value) {}
         constexpr ProxyRow(const ProxyRow&) = default;
-        constexpr ProxyRow(ProxyRow&&) = default;
+        constexpr ProxyRow(ProxyRow&&) noexcept = default;
         constexpr ProxyRow& operator=(const ProxyRow&) = default;
-        constexpr ProxyRow& operator=(ProxyRow&&) = default;
+        constexpr ProxyRow& operator=(ProxyRow&&) noexcept = default;
         constexpr bool operator==(const ProxyRow& other) const;
         
 
@@ -66,9 +66,9 @@ public:
     TMatrix() = default;
     constexpr TMatrix(size_t rows, size_t cols, const T& value = T()) : Data_(rows, ProxyRow(cols, value)) {}
     constexpr TMatrix(const TMatrix&) = default;
-    constexpr TMatrix(TMatrix&&) = default;
+    constexpr TMatrix(TMatrix&&) noexcept = default;
     constexpr TMatrix& operator=(const TMatrix&) = default;
-    constexpr TMatrix& operator=(TMatrix&&) = default;
+    constexpr TMatrix& operator=(TMatrix&&) noexcept = default;
 
     constexpr TMatrix(const std::vector<ProxyRow>& data) : Data_(data) {}
     TMatrix(std::initializer_list<std::initializer_list<T>> list);
@@ -76,13 +76,13 @@ public:
     const size_t Rows() const noexcept;
     const size_t Cols() const noexcept;
 
-	ProxyRow& operator[](size_t row);
-	const ProxyRow& operator[](size_t row) const;
+    ProxyRow& operator[](size_t row);
+    const ProxyRow& operator[](size_t row) const;
 
-	TMatrix& operator+=(const TMatrix&);
-	TMatrix& operator-=(const TMatrix&);
-	TMatrix& operator*=(const TMatrix&);
-	// TMatrix& operator/=(const TMatrix&);
+    TMatrix& operator+=(const TMatrix&);
+    TMatrix& operator-=(const TMatrix&);
+    TMatrix& operator*=(const TMatrix&);
+    // TMatrix& operator/=(const TMatrix&);
 
     TMatrix operator+(const TMatrix&) const;
     TMatrix operator-(const TMatrix&) const;
@@ -97,7 +97,7 @@ public:
     TMatrix operator-(const T&) const;
     TMatrix operator*(const T&) const;
     TMatrix operator/(const T&) const;
-	
+    
     // TODO: operator std::vector<std::vector<T>>() const;
 
     TMatrix Transpose() const;
@@ -142,7 +142,7 @@ constexpr bool TMatrix<T>::ProxyRow::operator==(const std::vector<T>& other) con
 template <typename T>
 constexpr size_t TMatrix<T>::ProxyRow::size() const noexcept {
     return ProxyData_.size();
-} 
+}
 
 template <typename T>
 T& TMatrix<T>::ProxyRow::operator[](size_t col) {
@@ -247,20 +247,20 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
 
 template <typename T>
 TMatrix<T> TMatrix<T>::operator+(const TMatrix<T>& other) const {
-	TMatrix<T> result(*this);
-	return result += other;
+    TMatrix<T> result(*this);
+    return result += other;
 }
 
 template <typename T>
 TMatrix<T> TMatrix<T>::operator-(const TMatrix<T>& other) const {
-	TMatrix<T> result(*this);
-	return result -= other;
+    TMatrix<T> result(*this);
+    return result -= other;
 }
 
 template <typename T>
 TMatrix<T> TMatrix<T>::operator*(const TMatrix<T>& other) const {
-	TMatrix<T> result(*this);
-	return result *= other;
+    TMatrix<T> result(*this);
+    return result *= other;
 }
 
 
@@ -334,29 +334,29 @@ TMatrix<T> TMatrix<T>::operator/(const T& scalar) const {
 
 template <typename T>
 TMatrix<T> TMatrix<T>::Transpose() const {
-	TMatrix<T> result(Cols(), Rows());
-	for (size_t i = 0; i < Rows(); ++i) {
-		for (size_t j = 0; j < Cols(); ++j) {
-			result[j][i] = (*this)[i][j];
-		}
-	}
-	return result;
+    TMatrix<T> result(Cols(), Rows());
+    for (size_t i = 0; i < Rows(); ++i) {
+        for (size_t j = 0; j < Cols(); ++j) {
+            result[j][i] = (*this)[i][j];
+        }
+    }
+    return result;
 }
 
 template <typename T>
 bool TMatrix<T>::operator==(const TMatrix<T>& other) const {
-	return Data_ == other.Data_;
+    return Data_ == other.Data_;
 }
 
 template <typename T>
 std::ostream& operator<<(std::ostream& out, const TMatrix<T>& matrix) {
-	for (const auto& row : matrix.Data_) {
-		for (const auto& elem : row) {
-			out << elem << ' ';
-		}
-		out << '\n';
-	}
-	return out;
+    for (const auto& row : matrix.Data_) {
+        for (const auto& elem : row) {
+            out << elem << ' ';
+        }
+        out << '\n';
+    }
+    return out;
 }
 
 } // namespace NMatrix

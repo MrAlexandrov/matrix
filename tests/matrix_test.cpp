@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include "../include/matrix.hpp"
 
-using namespace NMatrix;
+namespace NMatrix {
 
 TEST(MatrixConstructorTest, DefaultConstructor) {
     NMatrix::TMatrix<> matrix;
@@ -205,6 +205,8 @@ TEST(MatrixSpecialFunctionsTest, Printing) {
 
     EXPECT_EQ(output.str(), expected_output);
 }
+
+} // namespace NMatrix
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

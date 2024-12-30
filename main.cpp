@@ -1,11 +1,10 @@
 #include "include/matrix.hpp"
 
-using namespace NMatrix;
-
 int main() {
-    int n, m;
+    int n = 0;
+    int m = 0;
     std::cin >> n >> m;
-    TMatrix<> a(n, m);
+    NMatrix::TMatrix<> a(n, m);
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < m; ++j) {
             std::cin >> a[i][j];
