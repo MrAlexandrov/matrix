@@ -22,7 +22,7 @@ private:
         constexpr ProxyRow& operator=(const ProxyRow&) = default;
         constexpr ProxyRow& operator=(ProxyRow&&) noexcept = default;
         constexpr bool operator==(const ProxyRow& other) const;
-        
+
 
         constexpr ProxyRow(const std::vector<T>& other) : ProxyData_(other) {}
         constexpr ProxyRow(std::vector<T>&& other) : ProxyData_(std::move(other)) {}
