@@ -233,8 +233,8 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
     TMatrix<T> result(Rows(), other.Cols(), T{});
 
     for (size_t i = 0; i < Rows(); ++i) {
-        for (size_t j = 0; j < other.Cols(); ++j) {
-            for (size_t k = 0; k < Cols(); ++k) {
+        for (size_t k = 0; k < Cols(); ++k) {
+            for (size_t j = 0; j < other.Cols(); ++j) {
                 result[i][j] += (*this)[i][k] * other[k][j];
             }
         }
