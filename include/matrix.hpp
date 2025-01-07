@@ -2,8 +2,10 @@
 
 #include <initializer_list>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 #include <iostream>
+#include <algorithm>
 
 namespace NMatrix {
 
@@ -13,8 +15,11 @@ private:
     struct ProxyRow {
         using iterator = typename std::vector<T>::iterator;
         using const_iterator = typename std::vector<T>::const_iterator;
-        using reverse_iterator = typename std::vector<T>::reverse_iterator;
-        using const_reverse_iterator = typename std::vector<T>::const_reverse_iterator;
+
+        iterator begin() { return ProxyData_.begin(); }
+        iterator end() { return ProxyData_.end(); }
+        const_iterator begin() const { return ProxyData_.begin(); }
+        const_iterator end() const { return ProxyData_.end(); }
 
         constexpr ProxyRow(size_t cols, const T& value = T()) : ProxyData_(cols, value) {}
         constexpr ProxyRow(const ProxyRow&) = default;
@@ -29,7 +34,7 @@ private:
         constexpr ProxyRow& operator=(const std::vector<T>& other);
         constexpr ProxyRow& operator=(std::vector<T>&& other);
         constexpr bool operator==(const std::vector<T>& other) const;
-        
+
         ProxyRow(std::initializer_list<T> list) : ProxyData_(list) {}
         
         operator std::vector<T>() const; 
@@ -40,22 +45,6 @@ private:
 
         constexpr size_t size() const noexcept;
 
-        constexpr iterator begin() noexcept { return ProxyData_.begin(); }
-        constexpr const_iterator begin() const noexcept { return ProxyData_.begin(); }
-        constexpr iterator end() noexcept { return ProxyData_.end(); }
-        constexpr const_iterator end() const noexcept { return ProxyData_.end(); }
-
-        constexpr const_iterator cbegin() const noexcept { return ProxyData_.cbegin(); }
-        constexpr const_iterator cend() const noexcept { return ProxyData_.cend(); }
-
-        constexpr reverse_iterator rbegin() noexcept { return ProxyData_.rbegin(); }
-        constexpr const_reverse_iterator rbegin() const noexcept { return ProxyData_.rbegin(); }
-        constexpr reverse_iterator rend() noexcept { return ProxyData_.rend(); }
-        constexpr const_reverse_iterator rend() const noexcept { return ProxyData_.rend(); }
-
-        constexpr const_reverse_iterator crbegin() const noexcept { return ProxyData_.crbegin(); }
-        constexpr const_reverse_iterator crend() const noexcept { return ProxyData_.crend(); }
-
         T& operator[](size_t col);
         const T& operator[](size_t col) const;
 
@@ -63,6 +52,15 @@ private:
     };
 public:
     using value_type = T;
+    using iterator = typename std::vector<ProxyRow>::iterator;
+    using const_iterator = typename std::vector<ProxyRow>::const_iterator;
+    iterator begin() { return Data_.begin(); }
+    iterator end() { return Data_.end(); }
+    const_iterator begin() const { return Data_.begin(); }
+    const_iterator end() const { return Data_.end(); }
+    const_iterator cbegin() const { return Data_.cbegin(); }
+    const_iterator cend() const { return Data_.cend(); }
+
     TMatrix() = default;
     constexpr TMatrix(size_t rows, size_t cols, const T& value = T()) : Data_(rows, ProxyRow(cols, value)) {}
     constexpr TMatrix(const TMatrix&) = default;
@@ -106,6 +104,9 @@ public:
     // TODO: add concepts
     template <typename U>
     friend std::ostream& operator<<(std::ostream&, const TMatrix<U>&);
+
+private:
+    TMatrix BlockAndParallelMultiply(const TMatrix& other) const;
 
 private:
     // TODO: use pimpl
@@ -230,15 +231,7 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
         throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
     }
 
-    TMatrix<T> result(Rows(), other.Cols(), T{});
-
-    for (size_t i = 0; i < Rows(); ++i) {
-        for (size_t k = 0; k < Cols(); ++k) {
-            for (size_t j = 0; j < other.Cols(); ++j) {
-                result[i][j] += (*this)[i][k] * other[k][j];
-            }
-        }
-    }
+    TMatrix<T> result = BlockAndParallelMultiply(other);
 
     *this = std::move(result);
     return *this;
@@ -357,6 +350,42 @@ std::ostream& operator<<(std::ostream& out, const TMatrix<T>& matrix) {
         out << '\n';
     }
     return out;
+}
+
+template <typename T>
+TMatrix<T> TMatrix<T>::BlockAndParallelMultiply(const TMatrix<T>& other) const {
+    if (Cols() != other.Rows()) {
+        throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
+    }
+
+    TMatrix<T> result(Rows(), other.Cols(), T{});
+
+    unsigned int num_threads = std::jthread::hardware_concurrency();
+ 
+    std::vector<std::jthread> threads;
+
+    // Определяем работу для каждого потока
+    auto multiply_block = [&](size_t start_row, size_t end_row) {
+        for (size_t i = start_row; i < end_row; ++i) {
+            for (size_t j = 0; j < other.Cols(); ++j) {
+                for (size_t k = 0; k < Cols(); ++k) {
+                    result[i][j] += (*this)[i][k] * other[k][j];
+                }
+            }
+        }
+    };
+
+    size_t rows_per_thread = Rows() / num_threads;
+    size_t remaining_rows = Rows() % num_threads;
+    size_t start_row = 0;
+
+    for (unsigned int i = 0; i < num_threads; ++i) {
+        size_t end_row = start_row + rows_per_thread + (i < remaining_rows ? 1 : 0);
+        threads.emplace_back(multiply_block, start_row, end_row);
+        start_row = end_row;
+    }
+
+    return result;
 }
 
 } // namespace NMatrix
