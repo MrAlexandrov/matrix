@@ -206,6 +206,79 @@ TEST(MatrixSpecialFunctionsTest, Printing) {
     EXPECT_EQ(output.str(), expected_output);
 }
 
+TEST(MatrixSpecialFunctionsTest, GetRowOutOfRange) {
+    NMatrix::TMatrix<> matrix(2, 3, 1);
+
+    EXPECT_THROW(matrix.GetRow(static_cast<int>(matrix.Rows() + 1)), std::out_of_range);
+    EXPECT_THROW(matrix.GetRow(static_cast<int>(- matrix.Rows() - 1)), std::out_of_range);   
+}
+
+TEST(MatrixSpecialFunctionsTest, GetRow) {
+    NMatrix::TMatrix<> matrix(2, 3, 1);
+    const auto result = matrix.GetRow(0);
+
+    const std::vector<long double> expected_output = {
+        1, 1, 1
+    };
+
+    EXPECT_EQ(result, expected_output);
+}
+
+TEST(MatrixSpecialFunctionsTest, GetColumnOutOfRange) {
+    NMatrix::TMatrix<> matrix(2, 3, 1);
+
+    EXPECT_THROW(matrix.GetColumn(static_cast<int>(matrix.Cols() + 1)), std::out_of_range);
+    EXPECT_THROW(matrix.GetColumn(static_cast<int>(- matrix.Cols() - 1)), std::out_of_range);   
+}
+
+TEST(MatrixSpecialFunctionsTest, GetColumn) {
+    NMatrix::TMatrix<> matrix(2, 3, 1);
+    const auto result = matrix.GetColumn(0);
+
+    const std::vector<long double> expected_output = {
+        1, 1
+    };
+
+    EXPECT_EQ(result, expected_output);
+}
+
+TEST(MatrixSpecialFunctionsTest, GetSubMatrixOutOfRange) {
+    NMatrix::TMatrix<> matrix = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9}
+    };
+    auto submatrix = [&](int beginRow, int endRow, int beginCol, int endCol) {
+        return GetSubMatrix(matrix, beginRow, endRow, beginCol, endCol);
+    };
+    EXPECT_THROW(submatrix(-1, 0, 0, 0), std::out_of_range);
+    EXPECT_THROW(submatrix(0, 0, -1, 0), std::out_of_range);
+    EXPECT_THROW(submatrix(0, static_cast<int>(matrix.Rows() + 1), 0, 0), std::out_of_range);
+    EXPECT_THROW(submatrix(0, 0, 0, static_cast<int>(matrix.Cols() + 1)), std::out_of_range);
+
+    EXPECT_THROW(submatrix(0, -1, 0, 0), std::out_of_range);
+    EXPECT_THROW(submatrix(0, 0, 0, -1), std::out_of_range);
+    EXPECT_THROW(submatrix(static_cast<int>(matrix.Rows() + 1), 0, 0, 0), std::out_of_range);
+    EXPECT_THROW(submatrix(0, 0, 0, static_cast<int>(matrix.Cols() + 1)), std::out_of_range);
+}
+
+TEST(MatrixSpecialFunctionsTest, GetSubMatrix) {
+    NMatrix::TMatrix<> matrix = {
+        {1, 2, 3},
+        {4, 5, 6},
+        {7, 8, 9}
+    };
+    const auto result = GetSubMatrix(matrix, 0, 3, 1, 3);
+    const TMatrix<> expected_output = {
+        {2, 3},
+        {5, 6},
+        {8, 9}
+    };
+
+    EXPECT_EQ(result, expected_output);
+}
+
+
 } // namespace NMatrix
 
 int main(int argc, char **argv) {
