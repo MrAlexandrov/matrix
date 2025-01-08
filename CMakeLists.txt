@@ -2,13 +2,15 @@ cmake_minimum_required(VERSION 3.14)
 project(matrix CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
+add_library(MatrixLib INTERFACE)
 
-add_executable(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/main.cpp)
+target_include_directories(MatrixLib INTERFACE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 
 enable_testing()
-add_subdirectory(${CMAKE_SOURCE_DIR}/tests)
+add_subdirectory(tests)
 
 set(CTEST_BINARY_DIRECTORY ${CMAKE_BINARY_DIR})
