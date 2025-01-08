@@ -31,9 +31,9 @@ private:
         constexpr ProxyRow& operator=(const std::vector<T>& other);
         constexpr ProxyRow& operator=(std::vector<T>&& other);
         constexpr bool operator==(const std::vector<T>& other) const;
-        
+
         ProxyRow(std::initializer_list<T> list) : ProxyData(list) {}
-        
+
         operator std::vector<T>() const; 
 
         friend bool operator==(const std::vector<T>& vec, const ProxyRow& row) {
@@ -449,7 +449,7 @@ TMatrix<T> GetSubMatrix(const TMatrix<T>& matrix,
     ) {
         throw std::out_of_range("Some index out of range");
     }
-    
+
     TMatrix<T> result(endRow - beginRow, endCol - beginCol);
     for (int row = beginRow; row < endRow; ++row) {
         for (int col = beginCol; col < endCol; ++col) {

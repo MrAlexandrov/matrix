@@ -23,6 +23,9 @@ run: build
 	@echo "==> Running ${PROJECT_NAME}"
 	@cd ${BUILD_DIR} && ./${PROJECT_NAME} < ../${INPUT_FILE} > ../${OUTPUT_FILE}
 
+clang-tidy:
+	clang-tidy include/matrix.hpp main.cpp tests/matrix_test.cpp -- -std=c++20
+
 clean:
 	@echo "==> Cleaning up..."
 	@rm -rf $(BUILD_DIR)
@@ -33,4 +36,4 @@ install:
 	sudo apt-get update
 	sudo apt-get install -y cmake clang libgtest-dev
 
-.PHONY: all build test clean rebuild install
+.PHONY: all build test clang-tidy clean rebuild install
