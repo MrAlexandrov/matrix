@@ -35,10 +35,6 @@ TEST(MatrixConstructorTest, ParameterizedConstructorWithDefaultValue) {
 }
 
 TEST(MatrixConstructorTest, InitializerListIncorrect) {
-    std::initializer_list<std::initializer_list<long double>> invalidList = {
-        {1},
-        {2, 3}
-    };
     EXPECT_THROW(
         TMatrix<> matrix({
             {1},
