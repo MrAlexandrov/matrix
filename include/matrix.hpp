@@ -407,8 +407,8 @@ TMatrix<T> TMatrix<T>::BlockAndParallelMultiply(const TMatrix<T>& other) const {
 
     auto multiply_block = [&](size_t start_row, size_t end_row) {
         for (size_t i = start_row; i < end_row; ++i) {
-            for (size_t j = 0; j < other.Cols(); ++j) {
-                for (size_t k = 0; k < Cols(); ++k) {
+            for (size_t k = 0; k < Cols(); ++k) {
+                for (size_t j = 0; j < other.Cols(); ++j) {
                     result[i][j] += (*this)[i][k] * other[k][j];
                 }
             }
