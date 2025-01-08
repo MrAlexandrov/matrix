@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <stdexcept>
+#include <vector>
 #include "../include/matrix.hpp"
 
 namespace NMatrix {
 
 TEST(MatrixConstructorTest, DefaultConstructor) {
-    const NMatrix::TMatrix<> matrix;
+    const TMatrix<> matrix;
     EXPECT_EQ(matrix.Rows(), 0.0);
     EXPECT_EQ(matrix.Cols(), 0.0);
 }
@@ -32,12 +34,64 @@ TEST(MatrixConstructorTest, ParameterizedConstructorWithDefaultValue) {
     EXPECT_EQ(matrix, expected);
 }
 
-TEST(MatrixAccessTest, OutOfBoundsAccessRows) {
+TEST(MatrixConstructorTest, InitializerListIncorrect) {
+    std::initializer_list<std::initializer_list<long double>> invalidList = {
+        {1},
+        {2, 3}
+    };
+    EXPECT_THROW(
+        TMatrix<> matrix({
+            {1},
+            {2, 3}
+            }
+        ), 
+        std::invalid_argument);
+}
+
+TEST(MatrixConstructorTest, VectorsCorrect) {
+    const std::vector<long double> row = {1, 2, 3};
+    const TMatrix<> matrix {
+        row,
+        row
+    };
+    const TMatrix<> expected_output = {
+        {1, 2, 3},
+        {1, 2, 3}
+    };
+    EXPECT_EQ(matrix, expected_output);
+}
+
+TEST(MatrixConstructorTest, VectorsInorrect) {
+    const std::vector<long double> row1 = {1, 2, 3};
+    const std::vector<long double> row2 = {1, 2};
+
+    EXPECT_THROW(
+        TMatrix<> matrix({
+                row1,
+                row2
+            }
+        ), 
+        std::invalid_argument
+    );
+}
+
+
+TEST(MatrixAccessTest, AccessRowsOutOfBounds) {
+    TMatrix<> matrix(3, 3, 1.0);
+    EXPECT_THROW(matrix[3][3], std::out_of_range);
+}
+
+TEST(MatrixAccessTest, ConstAccessRowsOutOfBounds) {
     const TMatrix<> matrix(3, 3, 1.0);
     EXPECT_THROW(matrix[3][3], std::out_of_range);
 }
 
-TEST(MatrixAccessTest, OutOfBoundsAccessCols) {
+TEST(MatrixAccessTest, AccessColsOutOfBounds) {
+    TMatrix<> matrix(3, 3, 1.0);
+    EXPECT_THROW(matrix[0][3], std::out_of_range);
+}
+
+TEST(MatrixAccessTest, ConstAccessColsOutOfBounds) {
     const TMatrix<> matrix(3, 3, 1.0);
     EXPECT_THROW(matrix[0][3], std::out_of_range);
 }
@@ -52,6 +106,14 @@ TEST(MatrixAccessTest, Cols) {
     EXPECT_EQ(matrix.Cols(), 1);
 }
 
+TEST(MatrixOperationsTest, UnaryMinus) {
+    const TMatrix<> matrix(2, 2, 1);
+
+    const TMatrix<> expected(2, 2, -1);
+    EXPECT_EQ(-matrix, expected);
+}
+
+
 TEST(MatrixOperationsTest, AdditionCorrect) {
     const TMatrix<> matrix1(2, 2, 1.0);
     const TMatrix<> matrix2(2, 2, 2.0);
@@ -64,7 +126,15 @@ TEST(MatrixOperationsTest, AdditionCorrect) {
     EXPECT_EQ(result, expected);
 }
 
-TEST(MatrixOperationsTest, AdditionIncorrect) {
+TEST(MatrixOperationsTest, AdditionIncorrectRows) {
+    const TMatrix<> matrix1(1, 1);
+    const TMatrix<> matrix2(2, 1);
+
+    EXPECT_THROW(matrix1 + matrix2, std::invalid_argument);
+}
+
+
+TEST(MatrixOperationsTest, AdditionIncorrectCols) {
     const TMatrix<> matrix1(1, 1);
     const TMatrix<> matrix2(1, 2);
 
@@ -84,9 +154,16 @@ TEST(MatrixOperationsTest, SubtractionCorrect) {
     EXPECT_EQ(result, expected);
 }
 
-TEST(MatrixOperationsTest, SubtractionInorrect) {
+TEST(MatrixOperationsTest, SubtractionInorrectRows) {
     const TMatrix<> matrix1(1, 1, 3.0);
-    const TMatrix<> matrix2(2, 2, 2.0);
+    const TMatrix<> matrix2(2, 1, 2.0);
+
+    EXPECT_THROW(matrix1 - matrix2, std::invalid_argument);
+}
+
+TEST(MatrixOperationsTest, SubtractionInorrectCols) {
+    const TMatrix<> matrix1(1, 1, 3.0);
+    const TMatrix<> matrix2(1, 2, 2.0);
 
     EXPECT_THROW(matrix1 - matrix2, std::invalid_argument);
 }
@@ -295,7 +372,7 @@ TEST(MatrixSpecialFunctionsTest, Equality) {
 }
 
 TEST(MatrixSpecialFunctionsTest, Printing) {
-    const NMatrix::TMatrix<> matrix(2, 3, 1);
+    const TMatrix<> matrix(2, 3, 1);
 
     std::stringstream output;
     output << matrix;
@@ -308,14 +385,14 @@ TEST(MatrixSpecialFunctionsTest, Printing) {
 }
 
 TEST(MatrixSpecialFunctionsTest, GetRowOutOfRange) {
-    const NMatrix::TMatrix<> matrix(2, 3, 1);
+    const TMatrix<> matrix(2, 3, 1);
 
     EXPECT_THROW(matrix.GetRow(static_cast<int>(matrix.Rows() + 1)), std::out_of_range);
     EXPECT_THROW(matrix.GetRow(static_cast<int>(- matrix.Rows() - 1)), std::out_of_range);
 }
 
 TEST(MatrixSpecialFunctionsTest, GetRow) {
-    const NMatrix::TMatrix<> matrix(2, 3, 1);
+    const TMatrix<> matrix(2, 3, 1);
     const auto result = matrix.GetRow(0);
 
     const std::vector<long double> expected_output = {
@@ -326,14 +403,14 @@ TEST(MatrixSpecialFunctionsTest, GetRow) {
 }
 
 TEST(MatrixSpecialFunctionsTest, GetColumnOutOfRange) {
-    const NMatrix::TMatrix<> matrix(2, 3, 1);
+    const TMatrix<> matrix(2, 3, 1);
 
     EXPECT_THROW(matrix.GetColumn(static_cast<int>(matrix.Cols() + 1)), std::out_of_range);
     EXPECT_THROW(matrix.GetColumn(static_cast<int>(- matrix.Cols() - 1)), std::out_of_range);
 }
 
 TEST(MatrixSpecialFunctionsTest, GetColumn) {
-    const NMatrix::TMatrix<> matrix(2, 3, 1);
+    const TMatrix<> matrix(2, 3, 1);
     const auto result = matrix.GetColumn(0);
 
     const std::vector<long double> expected_output = {
@@ -344,7 +421,7 @@ TEST(MatrixSpecialFunctionsTest, GetColumn) {
 }
 
 TEST(MatrixSpecialFunctionsTest, GetSubMatrixOutOfRange) {
-    const NMatrix::TMatrix<> matrix = {
+    const TMatrix<> matrix = {
         {1, 2, 3},
         {4, 5, 6},
         {7, 8, 9}
@@ -364,7 +441,7 @@ TEST(MatrixSpecialFunctionsTest, GetSubMatrixOutOfRange) {
 }
 
 TEST(MatrixSpecialFunctionsTest, GetSubMatrix) {
-    const NMatrix::TMatrix<> matrix = {
+    const TMatrix<> matrix = {
         {1, 2, 3},
         {4, 5, 6},
         {7, 8, 9}
@@ -378,7 +455,6 @@ TEST(MatrixSpecialFunctionsTest, GetSubMatrix) {
 
     EXPECT_EQ(result, expected_output);
 }
-
 
 } // namespace NMatrix
 

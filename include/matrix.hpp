@@ -20,7 +20,7 @@ private:
 
         constexpr ProxyRow(size_t cols, const T& value = T()) : ProxyData(cols, value) {}
         constexpr ProxyRow(const ProxyRow&) = default;
-        constexpr ProxyRow(ProxyRow&&) noexcept = default;
+        // constexpr ProxyRow(ProxyRow&&) noexcept = default;
         constexpr ProxyRow& operator=(const ProxyRow&) = default;
         constexpr ProxyRow& operator=(ProxyRow&&) noexcept = default;
         constexpr bool operator==(const ProxyRow& other) const;
@@ -74,7 +74,19 @@ public:
 
     constexpr TMatrix(const std::vector<ProxyRow>& data) : Data_(data) {}
     constexpr TMatrix(std::initializer_list<std::initializer_list<T>> list);
-    
+    constexpr TMatrix(std::initializer_list<std::vector<T>> list);
+    // TODO: add construction from any combinations of vectors and initializer_list
+    // need to add conversion from initializer_list to ProxyRow, some developments:
+    // template <typename... Rows>
+    // constexpr TMatrix(const Rows&... rows) : Data_(std::vector<ProxyRow>(rows.begin(), rows.end())...) {
+    //     auto size = Data_.front().size();
+    //     for (const auto& current : Data_) {
+    //         if (current.size() != static_cast<decltype(current.size())>(size)) {
+    //             throw(std::invalid_argument("All rows should be same size"));
+    //         }
+    //     }
+    // }
+
     size_t Rows() const noexcept;
     size_t Cols() const noexcept;
 
@@ -126,27 +138,27 @@ TMatrix<T>::ProxyRow::operator std::vector<T>() const {
     return ProxyData;
 } 
 
-template <typename T>
-constexpr typename TMatrix<T>::ProxyRow& TMatrix<T>::ProxyRow::operator=(const std::vector<T>& other) {
-    ProxyData = other;
-    return *this;
-}
+// template <typename T>
+// constexpr typename TMatrix<T>::ProxyRow& TMatrix<T>::ProxyRow::operator=(const std::vector<T>& other) {
+//     ProxyData = other;
+//     return *this;
+// }
 
-template <typename T>
-constexpr typename TMatrix<T>::ProxyRow& TMatrix<T>::ProxyRow::operator=(std::vector<T>&& other) {
-    ProxyData = std::move(other);
-    return *this;
-}
+// template <typename T>
+// constexpr typename TMatrix<T>::ProxyRow& TMatrix<T>::ProxyRow::operator=(std::vector<T>&& other) {
+//     ProxyData = std::move(other);
+//     return *this;
+// }
 
 template <typename T>
 constexpr bool TMatrix<T>::ProxyRow::operator==(const ProxyRow& other) const {
     return ProxyData == other.ProxyData;
 }
 
-template <typename T>
-constexpr bool TMatrix<T>::ProxyRow::operator==(const std::vector<T>& other) const {
-    return ProxyData == other;
-}
+// template <typename T>
+// constexpr bool TMatrix<T>::ProxyRow::operator==(const std::vector<T>& other) const {
+//     return ProxyData == other;
+// }
 
 template <typename T>
 constexpr size_t TMatrix<T>::ProxyRow::size() const noexcept {
@@ -171,6 +183,20 @@ const T& TMatrix<T>::ProxyRow::operator[](size_t col) const {
 
 template <typename T>
 constexpr TMatrix<T>::TMatrix(std::initializer_list<std::initializer_list<T>> list) {
+    size_t rows_ = list.size();
+    size_t cols_ = list.begin()->size();
+
+    Data_.reserve(rows_);
+    for (const auto& row : list) {
+        if (row.size() != cols_) {
+            throw std::invalid_argument("All rows must have the same number of columns");
+        }
+        Data_.emplace_back(row);
+    }
+}
+
+template <typename T>
+constexpr TMatrix<T>::TMatrix(std::initializer_list<std::vector<T>> list) {
     size_t rows_ = list.size();
     size_t cols_ = list.begin()->size();
 
@@ -395,10 +421,6 @@ std::vector<T> TMatrix<T>::GetColumn(int column) const {
 
 template <typename T>
 TMatrix<T> TMatrix<T>::BlockAndParallelMultiply(const TMatrix<T>& other) const {
-    if (Cols() != other.Rows()) {
-        throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
-    }
-
     TMatrix<T> result(Rows(), other.Cols(), T{});
 
     unsigned int num_threads = std::jthread::hardware_concurrency();
