@@ -11,13 +11,13 @@ all: build test run
 
 build:
 	@echo "==> Configuring the project..."
-	@cmake -B$(BUILD_DIR) -H.
+	@cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -B$(BUILD_DIR) -H.
 	@echo "==> Building the project..."
 	@cmake --build $(BUILD_DIR) -j $(NPROCS)
 
 test: build
 	@echo "==> Running tests..."
-	@cd $(BUILD_DIR) && ctest --verbose
+	@cd $(BUILD_DIR) && ctest --verbose --parallel $(NPROCS)
 
 run: build
 	@echo "==> Running ${PROJECT_NAME}"
