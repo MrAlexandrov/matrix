@@ -2,14 +2,15 @@
 
 #include <initializer_list>
 #include <stdexcept>
-#include <thread>
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <immintrin.h>
+#include <omp.h>
 
 namespace NMatrix {
 
-template <typename T = long double>
+template <typename T = double>
 class TMatrix {
 private:
     struct ProxyRow {
@@ -124,9 +125,6 @@ public:
     // TODO: add concepts
     template <typename U>
     friend std::ostream& operator<<(std::ostream&, const TMatrix<U>&);
-
-private:
-    TMatrix BlockAndParallelMultiply(const TMatrix& other) const;
 
 private:
     // TODO: use pimpl
@@ -276,9 +274,8 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
         throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
     }
 
-    TMatrix<T> result = BlockAndParallelMultiply(other);
+    *this = BlockAndParallelMultiply(*this, other);
 
-    *this = std::move(result);
     return *this;
 }
 
@@ -420,31 +417,163 @@ std::vector<T> TMatrix<T>::GetColumn(int column) const {
 }
 
 template <typename T>
-TMatrix<T> TMatrix<T>::BlockAndParallelMultiply(const TMatrix<T>& other) const {
-    TMatrix<T> result(Rows(), other.Cols(), T{});
+concept AVX2Supported = std::is_same_v<T, float> || std::is_same_v<T, double>;
 
-    unsigned int num_threads = std::jthread::hardware_concurrency();
- 
-    std::vector<std::jthread> threads;
+template <typename T>
+concept AVX2IntegerSupported = std::is_same_v<T, int> || std::is_same_v<T, long> || std::is_same_v<T, long long>;
 
-    auto multiply_block = [&](size_t start_row, size_t end_row) {
-        for (size_t i = start_row; i < end_row; ++i) {
-            for (size_t k = 0; k < Cols(); ++k) {
-                for (size_t j = 0; j < other.Cols(); ++j) {
-                    result[i][j] += (*this)[i][k] * other[k][j];
+template <AVX2Supported T>
+inline T sum256(std::conditional_t<std::is_same_v<T, float>, __m256, __m256d> vec) {
+    if constexpr (std::is_same_v<T, float>) {
+        __m128 hi = _mm256_extractf128_ps(vec, 1);
+        __m128 lo = _mm256_castps256_ps128(vec);
+        __m128 sum = _mm_add_ps(hi, lo);
+        sum = _mm_hadd_ps(sum, sum);
+        sum = _mm_hadd_ps(sum, sum);
+        return _mm_cvtss_f32(sum);
+    } else {
+        __m128d hi = _mm256_extractf128_pd(vec, 1);
+        __m128d lo = _mm256_castpd256_pd128(vec);
+        __m128d sum = _mm_add_pd(hi, lo);
+        sum = _mm_hadd_pd(sum, sum);
+        return _mm_cvtsd_f64(sum);
+    }
+}
+
+template <typename T>
+void avx2_multiply(
+    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
+    size_t ib, size_t jb, size_t kb, size_t block_size
+) 
+requires AVX2Supported<T>
+{
+    size_t N = result.Rows();
+    size_t M = result.Cols();
+    size_t K = matrix1.Cols();
+
+    size_t iend = std::min(ib + block_size, N);
+    size_t jend = std::min(jb + block_size, M);
+    size_t kend = std::min(kb + block_size, K);
+
+    for (size_t i = ib; i < iend; ++i) {
+        for (size_t j = jb; j < jend; ++j) {
+            T sum = 0;
+
+            if constexpr (std::is_same_v<T, float>) {
+                __m256 acc = _mm256_setzero_ps();
+                for (size_t k = kb; k + 16 <= kend; k += 16) {
+                    acc = _mm256_fmadd_ps(_mm256_loadu_ps(&matrix1[i][k]), _mm256_loadu_ps(&matrix2[k][j]), acc);
+                    acc = _mm256_fmadd_ps(_mm256_loadu_ps(&matrix1[i][k + 8]), _mm256_loadu_ps(&matrix2[k + 8][j]), acc);
+                }
+                sum += sum256<float>(acc);
+            } else {
+                __m256d acc = _mm256_setzero_pd();
+                for (size_t k = kb; k + 8 <= kend; k += 8) {
+                    acc = _mm256_fmadd_pd(_mm256_loadu_pd(&matrix1[i][k]), _mm256_loadu_pd(&matrix2[k][j]), acc);
+                    acc = _mm256_fmadd_pd(_mm256_loadu_pd(&matrix1[i][k + 4]), _mm256_loadu_pd(&matrix2[k + 4][j]), acc);
+                }
+                sum += sum256<double>(acc);
+            }
+
+            for (size_t k = (kend / (sizeof(T) == 4 ? 16 : 8)) * (sizeof(T) == 4 ? 16 : 8); k < kend; ++k) {
+                sum += matrix1[i][k] * matrix2[k][j];
+            }
+
+            result[i][j] += sum;
+        }
+    }
+}
+
+template <typename T>
+void avx2_integer_multiply(
+    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
+    size_t ib, size_t jb, size_t kb, size_t block_size
+) 
+requires AVX2IntegerSupported<T>
+{
+    size_t N = result.Rows();
+    size_t M = result.Cols();
+    size_t K = matrix1.Cols();
+
+    size_t iend = std::min(ib + block_size, N);
+    size_t jend = std::min(jb + block_size, M);
+    size_t kend = std::min(kb + block_size, K);
+
+    for (size_t i = ib; i < iend; ++i) {
+        for (size_t j = jb; j < jend; ++j) {
+            T sum = 0;
+
+            __m256i acc = _mm256_setzero_si256();
+            for (size_t k = kb; k + 8 <= kend; k += 8) {
+                __m256i a = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&matrix1[i][k]));
+                __m256i b = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&matrix2[k][j]));
+                acc = _mm256_add_epi32(acc, _mm256_mullo_epi32(a, b));
+            }
+
+            alignas(32) int res[8];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(res), acc);
+            for (int r : res) sum += r;
+
+            for (size_t k = (kend / 8) * 8; k < kend; ++k) {
+                sum += matrix1[i][k] * matrix2[k][j];
+            }
+
+            result[i][j] += sum;
+        }
+    }
+}
+
+template <typename T>
+void scalar_multiply(
+    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
+    size_t ib, size_t jb, size_t kb, size_t block_size
+) 
+requires (!AVX2Supported<T> && !AVX2IntegerSupported<T>)
+{
+    size_t N = result.Rows();
+    size_t M = result.Cols();
+    size_t K = matrix1.Cols();
+
+    size_t iend = std::min(ib + block_size, N);
+    size_t jend = std::min(jb + block_size, M);
+    size_t kend = std::min(kb + block_size, K);
+
+    for (size_t i = ib; i < iend; ++i) {
+        for (size_t j = jb; j < jend; ++j) {
+            T sum = 0;
+            for (size_t k = kb; k < kend; ++k) {
+                sum += matrix1[i][k] * matrix2[k][j];
+            }
+            result[i][j] += sum;
+        }
+    }
+}
+
+template <typename T>
+TMatrix<T> BlockAndParallelMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, const size_t block_size = 256) {
+    if (matrix1.Cols() != matrix2.Rows()) {
+        throw std::invalid_argument("Matrix dimensions do not match");
+    }
+
+    size_t N = matrix1.Rows();
+    size_t M = matrix2.Cols();
+    size_t K = matrix1.Cols();
+
+    TMatrix<T> result(N, M, T{});
+
+    #pragma omp parallel for collapse(2) schedule(dynamic)
+    for (size_t ib = 0; ib < N; ib += block_size) {
+        for (size_t jb = 0; jb < M; jb += block_size) {
+            for (size_t kb = 0; kb < K; kb += block_size) {
+                if constexpr (AVX2Supported<T>) {
+                    avx2_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
+                } else if constexpr (AVX2IntegerSupported<T>) {
+                    avx2_integer_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
+                } else {
+                    scalar_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
                 }
             }
         }
-    };
-
-    size_t rows_per_thread = Rows() / num_threads;
-    size_t remaining_rows = Rows() % num_threads;
-    size_t start_row = 0;
-
-    for (unsigned int i = 0; i < num_threads; ++i) {
-        size_t end_row = start_row + rows_per_thread + (i < remaining_rows ? 1 : 0);
-        threads.emplace_back(multiply_block, start_row, end_row);
-        start_row = end_row;
     }
 
     return result;

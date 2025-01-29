@@ -8,11 +8,33 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
 endif()
 
+find_package(OpenMP REQUIRED)
+
+if(OpenMP_CXX_FOUND)
+    message(STATUS "Found OpenMP: ${OpenMP_CXX_LIBRARIES}")
+    set(OpenMP_CXX_FLAGS ${OpenMP_CXX_FLAGS} ${OpenMP_CXX_FLAGS})
+    set(OpenMP_CXX_LIBRARIES ${OpenMP_CXX_LIBRARIES} ${OpenMP_CXX_LIBRARIES})
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(STATUS "Detected Clang, adjusting OpenMP flags...")
+    set(OpenMP_CXX_FLAGS -Xpreprocessor -fopenmp)
+    set(OpenMP_CXX_LIBRARIES -lomp)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mavx2 -mfma -O3")
+endif()
+
 add_library(MatrixLib INTERFACE)
 
-target_include_directories(MatrixLib INTERFACE 
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+target_include_directories(MatrixLib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+target_compile_options(MatrixLib INTERFACE ${OpenMP_CXX_FLAGS})
+target_link_libraries(MatrixLib INTERFACE OpenMP::OpenMP_CXX)
+
+add_executable(${PROJECT_NAME} main.cpp)
+target_link_libraries(${PROJECT_NAME} MatrixLib)  # OpenMP автоматически подтянется из MatrixLib
 
 enable_testing()
 add_subdirectory(tests)
