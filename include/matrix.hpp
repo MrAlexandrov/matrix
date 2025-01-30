@@ -449,13 +449,13 @@ void avx2_multiply(
 ) 
 requires AVX2Supported<T>
 {
-    size_t N = result.Rows();
-    size_t M = result.Cols();
-    size_t K = matrix1.Cols();
+    const size_t N = result.Rows();
+    const size_t M = result.Cols();
+    const size_t K = matrix1.Cols();
 
-    size_t iend = std::min(ib + block_size, N);
-    size_t jend = std::min(jb + block_size, M);
-    size_t kend = std::min(kb + block_size, K);
+    const size_t iend = std::min(ib + block_size, N);
+    const size_t jend = std::min(jb + block_size, M);
+    const size_t kend = std::min(kb + block_size, K);
 
     for (size_t i = ib; i < iend; ++i) {
         for (size_t j = jb; j < jend; ++j) {
@@ -493,13 +493,13 @@ void avx2_integer_multiply(
 ) 
 requires AVX2IntegerSupported<T>
 {
-    size_t N = result.Rows();
-    size_t M = result.Cols();
-    size_t K = matrix1.Cols();
+    const size_t N = result.Rows();
+    const size_t M = result.Cols();
+    const size_t K = matrix1.Cols();
 
-    size_t iend = std::min(ib + block_size, N);
-    size_t jend = std::min(jb + block_size, M);
-    size_t kend = std::min(kb + block_size, K);
+    const size_t iend = std::min(ib + block_size, N);
+    const size_t jend = std::min(jb + block_size, M);
+    const size_t kend = std::min(kb + block_size, K);
 
     for (size_t i = ib; i < iend; ++i) {
         for (size_t j = jb; j < jend; ++j) {
@@ -514,7 +514,7 @@ requires AVX2IntegerSupported<T>
 
             alignas(32) int res[8];
             _mm256_store_si256(reinterpret_cast<__m256i*>(res), acc);
-            for (int r : res) sum += r;
+            for (const int r : res) sum += r;
 
             for (size_t k = (kend / 8) * 8; k < kend; ++k) {
                 sum += matrix1[i][k] * matrix2[k][j];
@@ -532,13 +532,13 @@ void scalar_multiply(
 ) 
 requires (!AVX2Supported<T> && !AVX2IntegerSupported<T>)
 {
-    size_t N = result.Rows();
-    size_t M = result.Cols();
-    size_t K = matrix1.Cols();
+    const size_t N = result.Rows();
+    const size_t M = result.Cols();
+    const size_t K = matrix1.Cols();
 
-    size_t iend = std::min(ib + block_size, N);
-    size_t jend = std::min(jb + block_size, M);
-    size_t kend = std::min(kb + block_size, K);
+    const size_t iend = std::min(ib + block_size, N);
+    const size_t jend = std::min(jb + block_size, M);
+    const size_t kend = std::min(kb + block_size, K);
 
     for (size_t i = ib; i < iend; ++i) {
         for (size_t j = jb; j < jend; ++j) {

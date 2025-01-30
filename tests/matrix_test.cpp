@@ -48,7 +48,7 @@ TYPED_TEST(MatrixConstructorTest, DefaultConstructor) {
 
 TYPED_TEST(MatrixConstructorTest, ParameterizedConstructor) {
     using T = TypeParam;
-    TMatrix<T> matrix(1, 3);
+    const TMatrix<T> matrix(1, 3);
 
     const TMatrix<T> expected{
         {0, 0, 0}
@@ -73,7 +73,7 @@ TYPED_TEST(MatrixConstructorTest, ParameterizedConstructorWithDefaultValue) {
 TYPED_TEST(MatrixConstructorTest, InitializerListIncorrect) {
     using T = TypeParam;
     EXPECT_THROW(
-        TMatrix<T> matrix({
+        const TMatrix<T> matrix({
             {1},
             {2, 3}
             }
@@ -83,12 +83,12 @@ TYPED_TEST(MatrixConstructorTest, InitializerListIncorrect) {
 
 TYPED_TEST(MatrixConstructorTest, VectorsCorrect) {
     using T = TypeParam;
-    const std::vector<T> row = {1, 2, 3};
-    const TMatrix<T> matrix {
+    const std::vector<T> row{1, 2, 3};
+    const TMatrix<T> matrix{
         row,
         row
     };
-    const TMatrix<T> expected_output = {
+    const TMatrix<T> expected_output{
         {1, 2, 3},
         {1, 2, 3}
     };
@@ -101,7 +101,7 @@ TYPED_TEST(MatrixConstructorTest, VectorsInorrect) {
     const std::vector<T> row2{1, 2};
 
     EXPECT_THROW(
-        TMatrix<T> matrix({
+        const TMatrix<T> matrix({
                 row1,
                 row2
             }
@@ -395,7 +395,7 @@ TYPED_TEST(MatrixOperationsTest, DivisionScalarIncorrect) {
         {4, 5, 6}
     };
 
-    EXPECT_THROW(TMatrix<T> result = matrix / 0, std::runtime_error);
+    EXPECT_THROW(const TMatrix<T> result = matrix / 0, std::runtime_error);
 }
 
 TYPED_TEST(MatrixSpecialFunctionsTest, Transpose) {
@@ -460,7 +460,7 @@ TYPED_TEST(MatrixSpecialFunctionsTest, GetRow) {
     const TMatrix<T> matrix(2, 3, 1);
     const auto result = matrix.GetRow(0);
 
-    const std::vector<T> expected_output = {
+    const std::vector<T> expected_output{
         1, 1, 1
     };
 
@@ -480,7 +480,7 @@ TYPED_TEST(MatrixSpecialFunctionsTest, GetColumn) {
     const TMatrix<T> matrix(2, 3, 1);
     const auto result = matrix.GetColumn(0);
 
-    const std::vector<T> expected_output = {
+    const std::vector<T> expected_output{
         1, 1
     };
 
@@ -489,7 +489,7 @@ TYPED_TEST(MatrixSpecialFunctionsTest, GetColumn) {
 
 TYPED_TEST(MatrixSpecialFunctionsTest, GetSubMatrixOutOfRange) {
     using T = TypeParam;
-    const TMatrix<T> matrix = {
+    const TMatrix<T> matrix{
         {1, 2, 3},
         {4, 5, 6},
         {7, 8, 9}
@@ -511,13 +511,13 @@ TYPED_TEST(MatrixSpecialFunctionsTest, GetSubMatrixOutOfRange) {
 
 TYPED_TEST(MatrixSpecialFunctionsTest, GetSubMatrix) {
     using T = TypeParam;
-    const TMatrix<T> matrix = {
+    const TMatrix<T> matrix{
         {1, 2, 3},
         {4, 5, 6},
         {7, 8, 9}
     };
     const auto result = GetSubMatrix(matrix, 0, 3, 1, 3);
-    const TMatrix<T> expected_output = {
+    const TMatrix<T> expected_output{
         {2, 3},
         {5, 6},
         {8, 9}

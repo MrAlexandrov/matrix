@@ -23,11 +23,12 @@ run: build
 	@echo "==> Running ${PROJECT_NAME}"
 	@${BUILD_DIR}/${PROJECT_NAME} < ${INPUT_FILE} > ${OUTPUT_FILE}
 
-clang-tidy:
-	find include tests -type f \( -name '*.cpp' -o -name '*.hpp' \) \
-	-print -o -name 'main.cpp' -print \
-	| xargs -n1 -P$(NPROCS) -I{} clang-tidy {} -- \
-	-std=c++20 -I/usr/lib/llvm-17/include -L/usr/lib/llvm-17/lib -fopenmp
+clang-tidy: build
+	@echo "==> Running clang-tidy with $(NPROCS) threads..."
+	find include tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print -o -name 'main.cpp' -print \
+	| xargs -P$(NPROCS) -n1 clang-tidy --p=build \
+	  --extra-arg=-std=c++20 \
+	  --extra-arg=-fopenmp
 
 clean:
 	@echo "==> Cleaning up..."
@@ -41,7 +42,7 @@ install:
 	sudo apt-get install -y cmake clang libgtest-dev
 
 coverage: test
-	llvm-profdata merge -sparse build/tests/default.profraw -o matrix.profdata
-	llvm-cov show ./build/tests/matrix_test -instr-profile=matrix.profdata -format=html -show-branches=count -output-dir=coverage
+	@llvm-profdata merge -sparse $(BUILD_DIR)/tests/default.profraw -o matrix.profdata
+	@llvm-cov show $(BUILD_DIR)/tests/matrix_test -instr-profile=matrix.profdata -format=html -show-branches=count -output-dir=coverage
 
 .PHONY: all build test clang-tidy clean rebuild install
