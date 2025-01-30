@@ -24,7 +24,10 @@ run: build
 	@${BUILD_DIR}/${PROJECT_NAME} < ${INPUT_FILE} > ${OUTPUT_FILE}
 
 clang-tidy:
-	clang-tidy include/matrix.hpp main.cpp tests/matrix_test.cpp -- -std=c++20
+	find include tests -type f \( -name '*.cpp' -o -name '*.hpp' \) \
+	-print -o -name 'main.cpp' -print \
+	| xargs -n1 -P$(NPROCS) -I{} clang-tidy {} -- \
+	-std=c++20 -I/usr/lib/llvm-17/include -L/usr/lib/llvm-17/lib -fopenmp
 
 clean:
 	@echo "==> Cleaning up..."

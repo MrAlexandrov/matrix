@@ -97,8 +97,8 @@ TYPED_TEST(MatrixConstructorTest, VectorsCorrect) {
 
 TYPED_TEST(MatrixConstructorTest, VectorsInorrect) {
     using T = TypeParam;
-    const std::vector<T> row1 = {1, 2, 3};
-    const std::vector<T> row2 = {1, 2};
+    const std::vector<T> row1{1, 2, 3};
+    const std::vector<T> row2{1, 2};
 
     EXPECT_THROW(
         TMatrix<T> matrix({

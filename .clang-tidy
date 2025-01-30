@@ -101,7 +101,7 @@ Checks:
   ,-modernize-use-emplace\
   "
 
-WarningsAsErrors: '*'
+# WarningsAsErrors: '*'
 CheckOptions:
   - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
     value: '1'

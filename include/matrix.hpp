@@ -62,7 +62,7 @@ private:
         T& operator[](size_t col);
         const T& operator[](size_t col) const;
 
-        std::vector<T> ProxyData;
+        std::vector<T> ProxyData{};
     };
 public:
     using value_type = T;
@@ -128,7 +128,7 @@ public:
 
 private:
     // TODO: use pimpl
-    std::vector<ProxyRow> Data_;
+    std::vector<ProxyRow> Data_{};
 };
 
 template <typename T>
@@ -331,10 +331,12 @@ TMatrix<T>& TMatrix<T>::operator*=(const T& scalar) {
 
 template <typename T>
 TMatrix<T>& TMatrix<T>::operator/=(const T& scalar) {
-    T zero = T(0.0);
+    T zero = static_cast<T>(0);
     if (scalar == zero) {
         throw std::runtime_error("Division by zero!");
+        __builtin_unreachable();
     }
+    assert(scalar != zero);
     for (auto& rows : Data_) {
         for (auto& element : rows) {
             element /= scalar;
@@ -423,7 +425,7 @@ template <typename T>
 concept AVX2IntegerSupported = std::is_same_v<T, int> || std::is_same_v<T, long> || std::is_same_v<T, long long>;
 
 template <AVX2Supported T>
-inline T sum256(std::conditional_t<std::is_same_v<T, float>, __m256, __m256d> vec) {
+inline T sum256([[maybe_unused]] std::conditional_t<std::is_same_v<T, float>, __m256, __m256d> vec) {
     if constexpr (std::is_same_v<T, float>) {
         __m128 hi = _mm256_extractf128_ps(vec, 1);
         __m128 lo = _mm256_castps256_ps128(vec);
