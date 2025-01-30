@@ -1,5 +1,4 @@
 #include "gtest/gtest.h"
-#include <initializer_list>
 #include <stdexcept>
 #include <vector>
 #include "../include/matrix.hpp"

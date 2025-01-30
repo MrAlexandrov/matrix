@@ -621,7 +621,6 @@ TMatrix<T> InvertMatrix(TMatrix<T> matrix) {
 
     TMatrix<T> inverse(n, n, 1);
 
-    // Прямой ход Гаусса-Жордана
     for (size_t i = 0; i < n; ++i) {
         T pivot = matrix[i][i];
         if (pivot == 0) {

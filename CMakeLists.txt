@@ -35,7 +35,7 @@ target_compile_options(MatrixLib INTERFACE -march=native -mavx2 -mfma -msse3)
 target_link_libraries(MatrixLib INTERFACE OpenMP::OpenMP_CXX)
 
 add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(${PROJECT_NAME} MatrixLib)  # OpenMP автоматически подтянется из MatrixLib
+target_link_libraries(${PROJECT_NAME} MatrixLib)
 
 enable_testing()
 add_subdirectory(tests)
