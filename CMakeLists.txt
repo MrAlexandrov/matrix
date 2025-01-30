@@ -31,7 +31,7 @@ add_library(MatrixLib INTERFACE)
 target_include_directories(MatrixLib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_compile_options(MatrixLib INTERFACE ${OpenMP_CXX_FLAGS})
-target_compile_options(MatrixLib PRIVATE -march=native -mavx2 -mfma -msse3)
+target_compile_options(MatrixLib INTERFACE -march=native -mavx2 -mfma -msse3)
 target_link_libraries(MatrixLib INTERFACE OpenMP::OpenMP_CXX)
 
 add_executable(${PROJECT_NAME} main.cpp)
