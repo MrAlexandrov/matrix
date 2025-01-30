@@ -612,4 +612,41 @@ TMatrix<T> GetSubMatrix(const TMatrix<T>& matrix,
     return result;
 }
 
+template <typename T>
+TMatrix<T> InvertMatrix(TMatrix<T> matrix) {
+    size_t n = matrix.Rows();
+    if (n != matrix.Cols()) {
+        throw std::invalid_argument("Matrix must be square to invert.");
+    }
+
+    TMatrix<T> inverse(n, n, 1);
+
+    // Прямой ход Гаусса-Жордана
+    for (size_t i = 0; i < n; ++i) {
+        T pivot = matrix[i][i];
+        if (pivot == 0) {
+            throw std::runtime_error("Matrix is singular and cannot be inverted.");
+        }
+
+        #pragma omp parallel for
+        for (size_t j = 0; j < n; ++j) {
+            matrix[i][j] /= pivot;
+            inverse[i][j] /= pivot;
+        }
+
+        #pragma omp parallel for
+        for (size_t row = 0; row < n; ++row) {
+            if (row != i) {
+                T factor = matrix[row][i];
+                for (size_t col = 0; col < n; ++col) {
+                    matrix[row][col] -= factor * matrix[i][col];
+                    inverse[row][col] -= factor * inverse[i][col];
+                }
+            }
+        }
+    }
+
+    return inverse;
+}
+
 } // namespace NMatrix
