@@ -386,7 +386,7 @@ TMatrix<T> TMatrix<T>::Transpose() const {
     size_t cols = Cols();
     TMatrix<T> transposed(cols, rows);
 
-    const size_t block_size = 64;
+    constexpr size_t block_size = 256 / sizeof(T);
     for (size_t i = 0; i < rows; i += block_size) {
         for (size_t j = 0; j < cols; j += block_size) {
             for (size_t ib = i, end = std::min(i + block_size, rows); ib < end; ++ib) {
@@ -439,11 +439,11 @@ std::vector<T> TMatrix<T>::GetColumn(int column) const {
 }
 
 template <typename T>
-TMatrix<T> TransposeBlockMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+TMatrix<T> TransposeBlockMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2/*, size_t block_size = 256 / sizeof(T)*/) {
     if (matrix1.Cols() != matrix2.Rows()) {
         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
     }
-
+    constexpr size_t block_size = 256 / sizeof(T);
     size_t N = matrix1.Rows();
     size_t M = matrix2.Cols();
     size_t K = matrix1.Cols();
@@ -616,10 +616,11 @@ T AVX2DotProduct(const T* a, const T* b, size_t size) {
 
 template <typename T>
 requires (AVX2Traits<T>::AVX2Supported)
-TMatrix<T> TransposeBlockAVXMultithreadMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+TMatrix<T> TransposeBlockAVXMultithreadMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2/*, size_t block_size = 256 / sizeof(T)*/) {
     if (matrix1.Cols() != matrix2.Rows()) {
         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
     }
+    constexpr size_t block_size = 256 / sizeof(T);
     size_t num_threads = std::min(static_cast<size_t>(std::thread::hardware_concurrency()), matrix1.Rows());
 
     size_t N = matrix1.Rows();

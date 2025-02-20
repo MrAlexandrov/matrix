@@ -367,10 +367,9 @@ TYPED_TEST(MatrixOperationsTest, MultiplicationCompare) {
         }
         return result;
     };
-    const int n = 1000;
-    const int m = 1000;
-    auto first = GenerateMatrix(n, m);
-    auto second = GenerateMatrix(n, m);
+    constexpr int n = 1000;
+    auto first = GenerateMatrix(n, n);
+    auto second = GenerateMatrix(n, n);
     if constexpr (AVX2Traits<T>::AVX2Supported) {
         EXPECT_EQ(TransposeBlockAVXMultithreadMultiply(first, second), TransposeBlockMultiply(first, second));
     }
