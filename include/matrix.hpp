@@ -428,16 +428,12 @@ bool TMatrix<T>::operator==(const TMatrix<T>& other) const {
 
 template <typename T>
 std::ostream& operator<<(std::ostream& out, const TMatrix<T>& matrix) {
-    out << std::fixed << std::setprecision(std::numeric_limits<T>::digits10);
     for (const auto& row : matrix.Data_) {
-        out << "{";
         for (const auto& elem : row) {
-            out << elem << "," << " ";
+            out << elem << " ";
         }
-        out << "},";
         out << "\n";
     }
-    out.unsetf(std::ios::fixed | std::ios::scientific);
     return out;
 }
 
