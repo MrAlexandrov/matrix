@@ -621,9 +621,9 @@ struct AVX2Traits {
         } else if constexpr (sizeof(T) == 4) {
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(temp), v);
         } else if constexpr (sizeof(T) == 8) {
-            __m128i low128 = _mm256_extracti128_si256(v, 0);
-            __m128i high128 = _mm256_extracti128_si256(v, 1);
-            __m128i sum128 = _mm_add_epi64(low128, high128);
+            const __m128i low128 = _mm256_extracti128_si256(v, 0);
+            const __m128i high128 = _mm256_extracti128_si256(v, 1);
+            const __m128i sum128 = _mm_add_epi64(low128, high128);
             temp = _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
         } else {
             static_assert(false, "Unreachable");
@@ -678,10 +678,10 @@ struct AVX2Traits<T> {
         return prod;
     }
     static T sum(VectorType v) {
-        __m128i low128 = _mm256_extracti128_si256(v, 0);
-        __m128i high128 = _mm256_extracti128_si256(v, 1);
+        const __m128i low128 = _mm256_extracti128_si256(v, 0);
+        const __m128i high128 = _mm256_extracti128_si256(v, 1);
     
-        __m128i sum128 = _mm_add_epi64(low128, high128);
+        const __m128i sum128 = _mm_add_epi64(low128, high128);
     
         return _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
     }

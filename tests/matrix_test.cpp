@@ -367,8 +367,8 @@ TYPED_TEST(MatrixOperationsTest, MultiplicationCompare) {
         }
         return result;
     };
-    int n = 1000;
-    int m = 1000;
+    const int n = 1000;
+    const int m = 1000;
     auto first = GenerateMatrix(n, m);
     auto second = GenerateMatrix(n, m);
     if constexpr (AVX2Supported<T>) {
