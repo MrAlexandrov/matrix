@@ -1,14 +1,30 @@
 #pragma once
 
 #include <initializer_list>
+#include <iomanip>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 #include <iostream>
 #include <algorithm>
 #include <immintrin.h>
 #include <omp.h>
 
+#include <thread>
+
 namespace NMatrix {
+
+template<typename T>
+concept AVX2Supported =
+    std::is_trivially_copyable_v<T> && 
+    std::is_standard_layout_v<T> &&
+    std::is_arithmetic_v<T> &&
+    (sizeof(T) == 4 || sizeof(T) == 8) &&
+    (std::is_convertible_v<T, float> || 
+     std::is_convertible_v<T, double> ||
+     std::is_convertible_v<T, int32_t> ||
+     std::is_convertible_v<T, int64_t>);
+
 
 template <typename T = double>
 class TMatrix {
@@ -274,7 +290,13 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
         throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
     }
 
-    *this = BlockAndParallelMultiply(*this, other);
+    // *this = BlockAndParallelMultiply(*this, other);
+    // *this = BestMultiplyMultithread(*this, other);
+    if constexpr (AVX2Supported<T>) {
+        *this = BestMultiplyMultithread(*this, other);
+    } else {
+        *this = BlockMultiplyWithTranspose(*this, other);
+    }
 
     return *this;
 }
@@ -334,7 +356,6 @@ TMatrix<T>& TMatrix<T>::operator/=(const T& scalar) {
     T zero = static_cast<T>(0);
     if (scalar == zero) {
         throw std::runtime_error("Division by zero!");
-        __builtin_unreachable();
     }
     assert(scalar != zero);
     for (auto& rows : Data_) {
@@ -369,15 +390,35 @@ TMatrix<T> TMatrix<T>::operator/(const T& scalar) const {
     return result /= scalar;
 }
 
+// template <typename T>
+// TMatrix<T> TMatrix<T>::Transpose() const {
+//     TMatrix<T> result(Cols(), Rows());
+//     for (size_t i = 0; i < Rows(); ++i) {
+//         for (size_t j = 0; j < Cols(); ++j) {
+//             result[j][i] = (*this)[i][j];
+//         }
+//     }
+//     return result;
+// }
+
 template <typename T>
 TMatrix<T> TMatrix<T>::Transpose() const {
-    TMatrix<T> result(Cols(), Rows());
-    for (size_t i = 0; i < Rows(); ++i) {
-        for (size_t j = 0; j < Cols(); ++j) {
-            result[j][i] = (*this)[i][j];
+    size_t rows = Rows();
+    size_t cols = Cols();
+    TMatrix<T> transposed(cols, rows);
+
+    const size_t block_size = 64; // Размер блока
+    for (size_t i = 0; i < rows; i += block_size) {
+        for (size_t j = 0; j < cols; j += block_size) {
+            for (size_t ib = i, end = std::min(i + block_size, rows); ib < end; ++ib) {
+                for (size_t jb = j, end = std::min(j + block_size, cols); jb < end; ++jb) {
+                    transposed[jb][ib] = (*this)[ib][jb];
+                }
+            }
         }
     }
-    return result;
+
+    return transposed;
 }
 
 template <typename T>
@@ -387,12 +428,16 @@ bool TMatrix<T>::operator==(const TMatrix<T>& other) const {
 
 template <typename T>
 std::ostream& operator<<(std::ostream& out, const TMatrix<T>& matrix) {
+    out << std::fixed << std::setprecision(std::numeric_limits<T>::digits10);
     for (const auto& row : matrix.Data_) {
+        out << "{";
         for (const auto& elem : row) {
-            out << elem << " ";
+            out << elem << "," << " ";
         }
+        out << "},";
         out << "\n";
     }
+    out.unsetf(std::ios::fixed | std::ios::scientific);
     return out;
 }
 
@@ -419,163 +464,350 @@ std::vector<T> TMatrix<T>::GetColumn(int column) const {
 }
 
 template <typename T>
-concept AVX2Supported = std::is_same_v<T, float> || std::is_same_v<T, double>;
-
-template <typename T>
-concept AVX2IntegerSupported = std::is_same_v<T, int> || std::is_same_v<T, long> || std::is_same_v<T, long long>;
-
-template <AVX2Supported T>
-inline T sum256([[maybe_unused]] std::conditional_t<std::is_same_v<T, float>, __m256, __m256d> vec) {
-    if constexpr (std::is_same_v<T, float>) {
-        __m128 hi = _mm256_extractf128_ps(vec, 1);
-        __m128 lo = _mm256_castps256_ps128(vec);
-        __m128 sum = _mm_add_ps(hi, lo);
-        sum = _mm_hadd_ps(sum, sum);
-        sum = _mm_hadd_ps(sum, sum);
-        return _mm_cvtss_f32(sum);
-    } else {
-        __m128d hi = _mm256_extractf128_pd(vec, 1);
-        __m128d lo = _mm256_castpd256_pd128(vec);
-        __m128d sum = _mm_add_pd(hi, lo);
-        sum = _mm_hadd_pd(sum, sum);
-        return _mm_cvtsd_f64(sum);
-    }
-}
-
-template <typename T>
-void avx2_multiply(
-    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
-    size_t ib, size_t jb, size_t kb, size_t block_size
-) 
-requires AVX2Supported<T>
-{
-    const size_t N = result.Rows();
-    const size_t M = result.Cols();
-    const size_t K = matrix1.Cols();
-
-    const size_t iend = std::min(ib + block_size, N);
-    const size_t jend = std::min(jb + block_size, M);
-    const size_t kend = std::min(kb + block_size, K);
-
-    for (size_t i = ib; i < iend; ++i) {
-        for (size_t j = jb; j < jend; ++j) {
-            T sum = 0;
-
-            if constexpr (std::is_same_v<T, float>) {
-                __m256 acc = _mm256_setzero_ps();
-                for (size_t k = kb; k + 16 <= kend; k += 16) {
-                    acc = _mm256_fmadd_ps(_mm256_loadu_ps(&matrix1[i][k]), _mm256_loadu_ps(&matrix2[k][j]), acc);
-                    acc = _mm256_fmadd_ps(_mm256_loadu_ps(&matrix1[i][k + 8]), _mm256_loadu_ps(&matrix2[k + 8][j]), acc);
-                }
-                sum += sum256<float>(acc);
-            } else {
-                __m256d acc = _mm256_setzero_pd();
-                for (size_t k = kb; k + 8 <= kend; k += 8) {
-                    acc = _mm256_fmadd_pd(_mm256_loadu_pd(&matrix1[i][k]), _mm256_loadu_pd(&matrix2[k][j]), acc);
-                    acc = _mm256_fmadd_pd(_mm256_loadu_pd(&matrix1[i][k + 4]), _mm256_loadu_pd(&matrix2[k + 4][j]), acc);
-                }
-                sum += sum256<double>(acc);
-            }
-
-            for (size_t k = (kend / (sizeof(T) == 4 ? 16 : 8)) * (sizeof(T) == 4 ? 16 : 8); k < kend; ++k) {
-                sum += matrix1[i][k] * matrix2[k][j];
-            }
-
-            result[i][j] += sum;
-        }
-    }
-}
-
-template <typename T>
-void avx2_integer_multiply(
-    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
-    size_t ib, size_t jb, size_t kb, size_t block_size
-) 
-requires AVX2IntegerSupported<T>
-{
-    const size_t N = result.Rows();
-    const size_t M = result.Cols();
-    const size_t K = matrix1.Cols();
-
-    const size_t iend = std::min(ib + block_size, N);
-    const size_t jend = std::min(jb + block_size, M);
-    const size_t kend = std::min(kb + block_size, K);
-
-    for (size_t i = ib; i < iend; ++i) {
-        for (size_t j = jb; j < jend; ++j) {
-            T sum = 0;
-
-            __m256i acc = _mm256_setzero_si256();
-            for (size_t k = kb; k + 8 <= kend; k += 8) {
-                __m256i a = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&matrix1[i][k]));
-                __m256i b = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&matrix2[k][j]));
-                acc = _mm256_add_epi32(acc, _mm256_mullo_epi32(a, b));
-            }
-
-            alignas(32) int res[8];
-            _mm256_store_si256(reinterpret_cast<__m256i*>(res), acc);
-            for (const int r : res) sum += r;
-
-            for (size_t k = (kend / 8) * 8; k < kend; ++k) {
-                sum += matrix1[i][k] * matrix2[k][j];
-            }
-
-            result[i][j] += sum;
-        }
-    }
-}
-
-template <typename T>
-void scalar_multiply(
-    const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, TMatrix<T>& result,
-    size_t ib, size_t jb, size_t kb, size_t block_size
-) 
-requires (!AVX2Supported<T> && !AVX2IntegerSupported<T>)
-{
-    const size_t N = result.Rows();
-    const size_t M = result.Cols();
-    const size_t K = matrix1.Cols();
-
-    const size_t iend = std::min(ib + block_size, N);
-    const size_t jend = std::min(jb + block_size, M);
-    const size_t kend = std::min(kb + block_size, K);
-
-    for (size_t i = ib; i < iend; ++i) {
-        for (size_t j = jb; j < jend; ++j) {
-            T sum = 0;
-            for (size_t k = kb; k < kend; ++k) {
-                sum += matrix1[i][k] * matrix2[k][j];
-            }
-            result[i][j] += sum;
-        }
-    }
-}
-
-template <typename T>
-TMatrix<T> BlockAndParallelMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, const size_t block_size = 256) {
+TMatrix<T> BlockMultiplyWithTranspose(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
     if (matrix1.Cols() != matrix2.Rows()) {
-        throw std::invalid_argument("Matrix dimensions do not match");
+        throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
     }
 
     size_t N = matrix1.Rows();
     size_t M = matrix2.Cols();
     size_t K = matrix1.Cols();
 
-    TMatrix<T> result(N, M, T{});
+    TMatrix<T> result(N, M, T{0});
+    TMatrix<T> transposed_matrix2 = matrix2.Transpose();
 
-    #pragma omp parallel for collapse(2) schedule(dynamic)
     for (size_t ib = 0; ib < N; ib += block_size) {
         for (size_t jb = 0; jb < M; jb += block_size) {
             for (size_t kb = 0; kb < K; kb += block_size) {
-                if constexpr (AVX2Supported<T>) {
-                    avx2_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
-                } else if constexpr (AVX2IntegerSupported<T>) {
-                    avx2_integer_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
-                } else {
-                    scalar_multiply(matrix1, matrix2, result, ib, jb, kb, block_size);
+                for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
+                    for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
+                        T sum = 0;
+                        for (size_t k = kb, end_k = std::min(kb + block_size, K); k < end_k; ++k) {
+                            sum += matrix1[i][k] * transposed_matrix2[j][k];
+                        }
+                        result[i][j] += sum;
+                    }
                 }
             }
         }
+    }
+
+    return result;
+}
+
+// template <typename T>
+// requires AVX2Supported<T>
+// struct AVX2Traits;
+
+// template <>
+// struct AVX2Traits<float> {
+//     using VectorType = __m256;
+//     static constexpr size_t VectorSize = 8; // 8 float в __m256
+
+//     static VectorType setZero() { return _mm256_setzero_ps(); }
+//     static VectorType load(const float* ptr) { return _mm256_loadu_ps(ptr); }
+//     static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_ps(a, b, c); }
+//     static float sum(VectorType v) {
+//         float temp[8];
+//         _mm256_storeu_ps(temp, v);
+//         return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+//     }
+// };
+
+// template <>
+// struct AVX2Traits<double> {
+//     using VectorType = __m256d;
+//     static constexpr size_t VectorSize = 4; // 4 double в __m256d
+
+//     static VectorType setZero() { return _mm256_setzero_pd(); }
+//     static VectorType load(const double* ptr) { return _mm256_loadu_pd(ptr); }
+//     static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_pd(a, b, c); }
+//     static double sum(VectorType v) {
+//         double temp[4];
+//         _mm256_storeu_pd(temp, v);
+//         return temp[0] + temp[1] + temp[2] + temp[3];
+//     }
+// };
+
+// template <>
+// struct AVX2Traits<int32_t> {
+//     using VectorType = __m256i;
+//     static constexpr size_t VectorSize = 8; // 8 int32_t в __m256i
+
+//     static VectorType setZero() { return _mm256_setzero_si256(); }
+//     static VectorType load(const int32_t* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+//     static VectorType multiply(VectorType a, VectorType b) { return _mm256_mullo_epi32(a, b); }
+//     static int32_t sum(VectorType v) {
+//         alignas(32) int32_t temp[8];
+//         _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+//         return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+//     }
+// };
+
+// template <>
+// struct AVX2Traits<long> {
+//     using VectorType = __m256i;
+//     static constexpr size_t VectorSize = 8; // 8 int32_t в __m256i
+
+//     static VectorType setZero() { return _mm256_setzero_si256(); }
+//     static VectorType load(const int32_t* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+//     static VectorType multiply(VectorType a, VectorType b) { return _mm256_mullo_epi32(a, b); }
+//     static int32_t sum(VectorType v) {
+//         alignas(32) int32_t temp[8];
+//         _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+//         return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+//     }
+// };
+
+// // template <>
+// // struct AVX2Traits<int64_t> {
+// //     using VectorType = __m256i;
+// //     static constexpr size_t VectorSize = 4; // 4 int64_t в __m256i
+
+// //     static VectorType setZero() { return _mm256_setzero_si256(); }
+// //     static VectorType load(const int64_t* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+// //     static VectorType multiply(VectorType a, VectorType b) { return _mm256_mul_epi32(a, b); }
+// //     static int64_t sum(VectorType v) {
+// //         alignas(32) int64_t temp[4];
+// //         _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+// //         return temp[0] + temp[1] + temp[2] + temp[3];
+// //     }
+// // };
+
+// template <>
+// struct AVX2Traits<long long> {
+//     using VectorType = __m256i;
+//     static constexpr size_t VectorSize = 4; // 4 int64_t в __m256i
+
+//     static VectorType setZero() { return _mm256_setzero_si256(); }
+//     static VectorType load(const int64_t* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+//     static VectorType multiply(VectorType a, VectorType b) { return _mm256_mul_epi32(a, b); }
+//     static int64_t sum(VectorType v) {
+//         alignas(32) int64_t temp[4];
+//         _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+//         return temp[0] + temp[1] + temp[2] + temp[3];
+//     }
+// };
+
+template <typename T>
+struct AVX2Traits {
+    using VectorType = std::conditional_t<
+    std::is_same_v<T, float>, __m256,
+    std::conditional_t<std::is_same_v<T, double>, __m256d, __m256i>>;
+
+    static constexpr size_t VectorSize = sizeof(VectorType) / sizeof(T);
+
+    static VectorType setZero() {
+        if constexpr (std::is_same_v<T, float>) {
+            return _mm256_setzero_ps();
+        } else if constexpr (std::is_same_v<T, double>) {
+            return _mm256_setzero_pd();
+        } else {
+            return _mm256_setzero_si256();
+        }
+    }
+
+    static VectorType load(const T* ptr) {
+        if constexpr (std::is_same_v<T, float>) {
+            return _mm256_loadu_ps(ptr);
+        } else if constexpr (std::is_same_v<T, double>) {
+            return _mm256_loadu_pd(ptr);
+        } else {
+            return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
+        }
+    }    
+
+    static T sum(VectorType v) {
+        alignas(32) T temp[VectorSize];
+    
+        if constexpr (std::is_same_v<T, float>) {
+            _mm256_storeu_ps(temp, v);
+        } else if constexpr (std::is_same_v<T, double>) {
+            _mm256_storeu_pd(temp, v);
+        } else {
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(temp), v);
+        }
+    
+        T result = T{0};
+        for (size_t i = 0; i < VectorSize; ++i) {
+            result += temp[i];
+        }
+        return result;
+    }    
+};
+
+// Специализация для целых чисел (размер 4 байта)
+template <typename T>
+requires (std::is_integral_v<T> && sizeof(T) == 4)
+struct AVX2Traits<T> {
+    using VectorType = __m256i;
+    static constexpr size_t VectorSize = 8;
+
+    static VectorType setZero() { return _mm256_setzero_si256(); }
+    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+    static VectorType multiply(VectorType a, VectorType b) { return _mm256_mullo_epi32(a, b); }
+    static T sum(VectorType v) {
+        alignas(32) T temp[8];
+        _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+        return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+    }
+};
+
+// TODO: rewrite, do note work well
+// Специализация для целых чисел (размер 8 байт)
+template <typename T>
+requires (std::is_integral_v<T> && sizeof(T) == 8)
+struct AVX2Traits<T> {
+    using VectorType = __m256i;
+    static constexpr size_t VectorSize = 4;
+
+    static VectorType setZero() { return _mm256_setzero_si256(); }
+    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+
+    static VectorType multiply(VectorType a, VectorType b) {
+        __m256i b_swap      = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1)); // Swap H<->L
+        __m256i crossprod   = _mm256_mullo_epi32(a, b_swap);                    // 32-bit L*H and H*L cross-products
+        __m256i prodlh      = _mm256_slli_epi64(crossprod, 32);                 // Shift left, moving to correct position
+        __m256i prodhl      = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000)); // Isolate H*L
+        __m256i sumcross    = _mm256_add_epi64(prodlh, prodhl);                  // Sum cross-products
+        __m256i prodll      = _mm256_mul_epu32(a, b);                           // Low x Low (widening 32x32 => 64-bit)
+        __m256i result      = _mm256_add_epi64(prodll, sumcross);               // Add cross products
+        return result;
+    }
+    static T sum(VectorType v) {
+        alignas(32) T temp[4];
+        _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
+        return temp[0] + temp[1] + temp[2] + temp[3];
+    }
+};
+
+// Специализация для float
+template <>
+struct AVX2Traits<float> {
+    using VectorType = __m256;
+    static constexpr size_t VectorSize = 8;
+
+    static VectorType setZero() { return _mm256_setzero_ps(); }
+    static VectorType load(const float* ptr) { return _mm256_loadu_ps(ptr); }
+    static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_ps(a, b, c); }
+    static float sum(VectorType v) {
+        float temp[8];
+        _mm256_storeu_ps(temp, v);
+        return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+    }
+};
+
+// Специализация для double
+template <>
+struct AVX2Traits<double> {
+    using VectorType = __m256d;
+    static constexpr size_t VectorSize = 4;
+
+    static VectorType setZero() { return _mm256_setzero_pd(); }
+    static VectorType load(const double* ptr) { return _mm256_loadu_pd(ptr); }
+    static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_pd(a, b, c); }
+    static double sum(VectorType v) {
+        double temp[4];
+        _mm256_storeu_pd(temp, v);
+        return temp[0] + temp[1] + temp[2] + temp[3];
+    }
+};
+
+
+template <typename T>
+T avx2_dot_product(const T* a, const T* b, size_t size) {
+    using Traits = AVX2Traits<T>;
+    using VectorType = typename Traits::VectorType;
+    VectorType acc = Traits::setZero();
+    size_t vecSize = Traits::VectorSize;
+    size_t k = 0;
+
+    for (; k + vecSize <= size; k += vecSize) {
+        VectorType va = Traits::load(&a[k]);
+        VectorType vb = Traits::load(&b[k]);
+        if constexpr (std::is_floating_point_v<T>) {
+            acc = Traits::fmadd(va, vb, acc);
+        } else if constexpr (std::is_integral_v<T>) {
+            VectorType product = Traits::multiply(va, vb);
+            if constexpr (std::is_same_v<T, int32_t>) {
+                acc = _mm256_add_epi32(acc, product);
+            } else if constexpr (std::is_same_v<T, int64_t>) {
+                acc = _mm256_add_epi64(acc, product);
+            }
+        }
+    }
+
+    T result = Traits::sum(acc);
+    for (; k < size; ++k) {
+        result += a[k] * b[k];
+    }
+    return result;
+}
+
+// template <typename T>
+// requires AVX2Supported<T>
+// TMatrix<T> BestMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+//     if (matrix1.Cols() != matrix2.Rows()) {
+//         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
+//     }
+//     size_t N = matrix1.Rows();
+//     size_t M = matrix2.Cols();
+//     size_t K = matrix1.Cols();
+//     TMatrix<T> result(N, M, T{0});
+//     TMatrix<T> transposed_matrix2 = matrix2.Transpose();
+
+//     for (size_t ib = 0; ib < N; ib += block_size) {
+//         for (size_t jb = 0; jb < M; jb += block_size) {
+//             for (size_t kb = 0; kb < K; kb += block_size) {
+//                 for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
+//                     for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
+//                         size_t count = std::min(block_size, K - kb);
+//                         result[i][j] += avx2_dot_product(&matrix1[i][kb], &transposed_matrix2[j][kb], count);
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     return result;
+// }
+
+template <typename T>
+requires AVX2Supported<T>
+TMatrix<T> BestMultiplyMultithread(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+    if (matrix1.Cols() != matrix2.Rows()) {
+        throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
+    }
+    size_t num_threads = std::min(static_cast<size_t>(std::thread::hardware_concurrency()), matrix1.Rows());
+
+    size_t N = matrix1.Rows();
+    size_t M = matrix2.Cols();
+    size_t K = matrix1.Cols();
+    TMatrix<T> result(N, M, T{0});
+    TMatrix<T> transposed_matrix2 = matrix2.Transpose();
+
+    std::vector<std::thread> threads;
+
+    for (size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
+        threads.emplace_back([&, thread_id]() {
+            for (size_t ib = thread_id * block_size; ib < N; ib += num_threads * block_size) {
+                for (size_t jb = 0; jb < M; jb += block_size) {
+                    for (size_t kb = 0; kb < K; kb += block_size) {
+                        for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
+                            for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
+                                size_t count = std::min(block_size, K - kb);
+                                result[i][j] += avx2_dot_product(&matrix1[i][kb], &transposed_matrix2[j][kb], count);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // not jthread, because we should wait until return result
+    for (auto& thread : threads) {
+        thread.join();
     }
 
     return result;
@@ -646,6 +878,60 @@ TMatrix<T> InvertMatrix(TMatrix<T> matrix) {
     }
 
     return inverse;
+}
+
+template <typename T>
+TMatrix<T> FastPower(const TMatrix<T>& matrix, unsigned degree) {
+    if (matrix.Rows() != matrix.Cols()) {
+        throw std::invalid_argument("Matrix should be square for exponentiation.");
+    }
+    if (degree == 0) {
+        size_t n = matrix.Rows();
+        TMatrix<T> identity(n, n, T{0});
+        for (size_t i = 0; i < n; ++i) {
+            identity[i][i] = T{1};
+        }
+        return identity;
+    }
+
+    TMatrix<T> result = TMatrix<T>(matrix);
+    TMatrix<T> base = matrix;
+    unsigned power = degree - 1;
+    
+    while (power > 0) {
+        // same as (power % 2 == 1)
+        if (static_cast<bool>(power & 1)) {
+            result *= base;
+        }
+        base *= base;
+        power >>= 1;
+    }
+    
+    return result;
+}
+
+template <typename T>
+TMatrix<T> SlowPower(const TMatrix<T>& matrix, unsigned degree) {
+    if (matrix.Rows() != matrix.Cols()) {
+        throw std::invalid_argument("Matrix should be square for exponentiation.");
+    }
+
+    if (degree == 0) {
+        size_t n = matrix.Rows();
+        TMatrix<T> identity(n, n, T{0});
+        for (size_t i = 0; i < n; ++i) {
+            identity[i][i] = T{1};
+        }
+        return identity;
+    }
+
+    TMatrix<T> result = matrix;
+
+    for (unsigned i = 1; i < degree; ++i) {
+        result = result * matrix;
+    }
+
+    return result;
 }
 
 } // namespace NMatrix

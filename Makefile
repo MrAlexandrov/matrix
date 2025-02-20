@@ -45,4 +45,4 @@ coverage: test
 	@llvm-profdata merge -sparse $(BUILD_DIR)/tests/default.profraw -o matrix.profdata
 	@llvm-cov show $(BUILD_DIR)/tests/matrix_test -instr-profile=matrix.profdata -format=html -show-branches=count -output-dir=coverage
 
-.PHONY: all build test clang-tidy clean rebuild install
+.PHONY: all build test clang-tidy clean rebuild install coverage
