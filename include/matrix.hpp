@@ -485,11 +485,11 @@ private:
 public:
     static VectorType setZero() { return _mm256_setzero_ps(); }
     static T sum(VectorType v) {
-        VectorType temp1 = _mm256_hadd_ps(v, v);
-        VectorType temp2 = _mm256_hadd_ps(temp1, temp1);
+        v = _mm256_hadd_ps(v, v);
+        v = _mm256_hadd_ps(v, v);
 
         T result[8];
-        _mm256_storeu_ps(result, temp2);
+        _mm256_storeu_ps(result, v);
 
         return result[0] + result[4];
     }
