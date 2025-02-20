@@ -283,9 +283,9 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
     }
 
     if constexpr (AVX2Traits<T>::AVX2Supported) {
-        *this = BestMultiplyMultithread(*this, other);
+        *this = TransposeBlockAVXMultithreadMultiply(*this, other);
     } else {
-        *this = BlockMultiplyWithTranspose(*this, other);
+        *this = TransposeBlockMultiply(*this, other);
     }
 
     return *this;
@@ -439,7 +439,7 @@ std::vector<T> TMatrix<T>::GetColumn(int column) const {
 }
 
 template <typename T>
-TMatrix<T> BlockMultiplyWithTranspose(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+TMatrix<T> TransposeBlockMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
     if (matrix1.Cols() != matrix2.Rows()) {
         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
     }
@@ -616,7 +616,7 @@ T AVX2DotProduct(const T* a, const T* b, size_t size) {
 
 template <typename T>
 requires (AVX2Traits<T>::AVX2Supported)
-TMatrix<T> BestMultiplyMultithread(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
+TMatrix<T> TransposeBlockAVXMultithreadMultiply(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
     if (matrix1.Cols() != matrix2.Rows()) {
         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
     }

@@ -336,7 +336,7 @@ TYPED_TEST(MatrixOperationsTest, BlockMultiplyWithTransposeIncorrect) {
         {2, 2,},
         {2, 2,},
     };
-    EXPECT_THROW(BlockMultiplyWithTranspose(a, b), std::invalid_argument);
+    EXPECT_THROW(TransposeBlockMultiply(a, b), std::invalid_argument);
 }
 
 TYPED_TEST(MatrixOperationsTest, BestMultiplyMultithreadIncorrect) {
@@ -349,7 +349,7 @@ TYPED_TEST(MatrixOperationsTest, BestMultiplyMultithreadIncorrect) {
         {2, 2,},
     };
     if constexpr (AVX2Traits<T>::AVX2Supported) {
-        EXPECT_THROW(BestMultiplyMultithread(a, b), std::invalid_argument);
+        EXPECT_THROW(TransposeBlockAVXMultithreadMultiply(a, b), std::invalid_argument);
     }
 }
 
@@ -372,7 +372,7 @@ TYPED_TEST(MatrixOperationsTest, MultiplicationCompare) {
     auto first = GenerateMatrix(n, m);
     auto second = GenerateMatrix(n, m);
     if constexpr (AVX2Traits<T>::AVX2Supported) {
-        EXPECT_EQ(BestMultiplyMultithread(first, second), BlockMultiplyWithTranspose(first, second));
+        EXPECT_EQ(TransposeBlockAVXMultithreadMultiply(first, second), TransposeBlockMultiply(first, second));
     }
 }
 
