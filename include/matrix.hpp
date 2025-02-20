@@ -620,8 +620,15 @@ struct AVX2Traits {
             _mm256_storeu_ps(temp, v);
         } else if constexpr (std::is_same_v<T, double>) {
             _mm256_storeu_pd(temp, v);
-        } else {
+        } else if constexpr (sizeof(T) == 4) {
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(temp), v);
+        } else if constexpr (sizeof(T) == 8) {
+            __m128i low128 = _mm256_extracti128_si256(v, 0);
+            __m128i high128 = _mm256_extracti128_si256(v, 1);
+            __m128i sum128 = _mm_add_epi64(low128, high128);
+            temp = _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
+        } else {
+            static_assert(false, "Unreachable");
         }
     
         T result = T{0};
@@ -661,19 +668,24 @@ struct AVX2Traits<T> {
     static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
 
     static VectorType multiply(VectorType a, VectorType b) {
-        const __m256i b_swap      = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1)); // Swap H<->L
-        const __m256i crossprod   = _mm256_mullo_epi32(a, b_swap);                    // 32-bit L*H and H*L cross-products
-        const __m256i prodlh      = _mm256_slli_epi64(crossprod, 32);                 // Shift left, moving to correct position
-        const __m256i prodhl      = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000)); // Isolate H*L
-        const __m256i sumcross    = _mm256_add_epi64(prodlh, prodhl);                  // Sum cross-products
-        const __m256i prodll      = _mm256_mul_epu32(a, b);                           // Low x Low (widening 32x32 => 64-bit)
-        const __m256i result      = _mm256_add_epi64(prodll, sumcross);               // Add cross products
-        return result;
+        const __m256i b_swap        = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1));   // swap H<->L
+        const __m256i crossprod     = _mm256_mullo_epi32(a, b_swap);                 // 32-bit L*H and H*L cross-products
+    
+        const __m256i prodlh        = _mm256_slli_epi64(crossprod, 32);          // bring the low half up to the top of each 64-bit chunk 
+        const __m256i prodhl        = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000)); // isolate the other, also into the high half were it needs to eventually be
+        const __m256i sumcross      = _mm256_add_epi32(prodlh, prodhl);       // the sum of the cross products, with the low half of each u64 being 0.
+    
+        const __m256i prodll        = _mm256_mul_epu32(a,b);                  // widening 32x32 => 64-bit  low x low products
+        const __m256i prod          = _mm256_add_epi32(prodll, sumcross);     // add the cross products into the high half of the result
+        return prod;
     }
     static T sum(VectorType v) {
-        alignas(32) T temp[4];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
-        return temp[0] + temp[1] + temp[2] + temp[3];
+        __m128i low128 = _mm256_extracti128_si256(v, 0);
+        __m128i high128 = _mm256_extracti128_si256(v, 1);
+    
+        __m128i sum128 = _mm_add_epi64(low128, high128);
+    
+        return _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
     }
 };
 
@@ -725,10 +737,12 @@ T avx2_dot_product(const T* a, const T* b, size_t size) {
             acc = Traits::fmadd(va, vb, acc);
         } else if constexpr (std::is_integral_v<T>) {
             VectorType product = Traits::multiply(va, vb);
-            if constexpr (std::is_same_v<T, int32_t>) {
+            if constexpr (sizeof(T) == 4) {
                 acc = _mm256_add_epi32(acc, product);
-            } else if constexpr (std::is_same_v<T, int64_t>) {
+            } else if constexpr (sizeof(T) == 8) {
                 acc = _mm256_add_epi64(acc, product);
+            } else {
+                static_assert(false, "Unreachable");
             }
         }
     }
@@ -782,28 +796,25 @@ TMatrix<T> BestMultiplyMultithread(const TMatrix<T>& matrix1, const TMatrix<T>& 
     TMatrix<T> result(N, M, T{0});
     TMatrix<T> transposed_matrix2 = matrix2.Transpose();
 
-    std::vector<std::thread> threads;
+    {
+        std::vector<std::jthread> threads;
 
-    for (size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
-        threads.emplace_back([&, thread_id]() {
-            for (size_t ib = thread_id * block_size; ib < N; ib += num_threads * block_size) {
-                for (size_t jb = 0; jb < M; jb += block_size) {
-                    for (size_t kb = 0; kb < K; kb += block_size) {
-                        for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
-                            for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
-                                size_t count = std::min(block_size, K - kb);
-                                result[i][j] += avx2_dot_product(&matrix1[i][kb], &transposed_matrix2[j][kb], count);
+        for (size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
+            threads.emplace_back([&, thread_id]() {
+                for (size_t ib = thread_id * block_size; ib < N; ib += num_threads * block_size) {
+                    for (size_t jb = 0; jb < M; jb += block_size) {
+                        for (size_t kb = 0; kb < K; kb += block_size) {
+                            for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
+                                for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
+                                    size_t count = std::min(block_size, K - kb);
+                                    result[i][j] += avx2_dot_product(&(matrix1[i][kb]), &(transposed_matrix2[j][kb]), count);;
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
-    }
-
-    // not jthread, because we should wait until return result
-    for (auto& thread : threads) {
-        thread.join();
+            });
+        }
     }
 
     return result;
