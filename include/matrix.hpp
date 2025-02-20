@@ -9,22 +9,14 @@
 #include <algorithm>
 #include <immintrin.h>
 #include <omp.h>
-
 #include <thread>
 
 namespace NMatrix {
 
-template<typename T>
-concept AVX2Supported =
-    std::is_trivially_copyable_v<T> &&
-    std::is_standard_layout_v<T> &&
-    std::is_arithmetic_v<T> &&
-    (sizeof(T) == 4 || sizeof(T) == 8) &&
-    (std::is_convertible_v<T, float> ||
-     std::is_convertible_v<T, double> ||
-     std::is_convertible_v<T, int32_t> ||
-     std::is_convertible_v<T, int64_t>);
-
+template <typename T>
+struct AVX2Traits {
+    static constexpr bool AVX2Supported = false;
+};
 
 template <typename T = double>
 class TMatrix {
@@ -289,7 +281,7 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
         throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
     }
 
-    if constexpr (AVX2Supported<T>) {
+    if constexpr (AVX2Traits<T>::AVX2Supported) {
         *this = BestMultiplyMultithread(*this, other);
     } else {
         *this = BlockMultiplyWithTranspose(*this, other);
@@ -478,93 +470,89 @@ TMatrix<T> BlockMultiplyWithTranspose(const TMatrix<T>& matrix1, const TMatrix<T
 }
 
 template <typename T>
-struct AVX2Traits {
-    using VectorType = std::conditional_t<
-        std::is_same_v<T, float>, __m256,
-        std::conditional_t<std::is_same_v<T, double>, __m256d, __m256i>
-    >;
+requires (std::is_floating_point_v<T> && sizeof(T) == 4)
+struct AVX2Traits<T> {
+    static constexpr bool AVX2Supported = true;
+    using VectorType = __m256;
+    static constexpr size_t VectorSize = 32 / sizeof(T);
 
-    static constexpr size_t VectorSize = sizeof(VectorType) / sizeof(T);
-
-    static VectorType setZero() {
-        if constexpr (std::is_same_v<T, float>) {
-            return _mm256_setzero_ps();
-        } else if constexpr (std::is_same_v<T, double>) {
-            return _mm256_setzero_pd();
-        } else {
-            return _mm256_setzero_si256();
-        }
-    }
-
-    static VectorType load(const T* ptr) {
-        if constexpr (std::is_same_v<T, float>) {
-            return _mm256_loadu_ps(ptr);
-        } else if constexpr (std::is_same_v<T, double>) {
-            return _mm256_loadu_pd(ptr);
-        } else {
-            return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
-        }
-    }
-
+    static VectorType setZero() { return _mm256_setzero_ps(); }
+    static VectorType load(const T* ptr) { return _mm256_loadu_ps(ptr); }
+    static VectorType multiply(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_ps(a, b, c); }
     static T sum(VectorType v) {
-        alignas(32) T temp[VectorSize];
+        VectorType temp1 = _mm256_hadd_ps(v, v);
+        VectorType temp2 = _mm256_hadd_ps(temp1, temp1);
 
-        if constexpr (std::is_same_v<T, float>) {
-            _mm256_storeu_ps(temp, v);
-        } else if constexpr (std::is_same_v<T, double>) {
-            _mm256_storeu_pd(temp, v);
-        } else if constexpr (sizeof(T) == 4) {
-            _mm256_storeu_si256(reinterpret_cast<__m256i*>(temp), v);
-        } else if constexpr (sizeof(T) == 8) {
-            const __m128i low128 = _mm256_extracti128_si256(v, 0);
-            const __m128i high128 = _mm256_extracti128_si256(v, 1);
-            const __m128i sum128 = _mm_add_epi64(low128, high128);
-            temp = _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
-        } else {
-            static_assert(false, "Unreachable");
-        }
+        T result[8];
+        _mm256_storeu_ps(result, temp2);
 
-        T result = T{0};
-        for (size_t i = 0; i < VectorSize; ++i) {
-            result += temp[i];
-        }
-        return result;
+        return result[0] + result[4];
+    }
+    static VectorType process(VectorType va, VectorType vb, VectorType acc) {
+        return multiply(va, vb, acc);
+    }
+};
+
+template <typename T>
+requires (std::is_floating_point_v<T> && sizeof(T) == 8)
+struct AVX2Traits<T> {
+    static constexpr bool AVX2Supported = true;
+    using VectorType = __m256d;
+    static constexpr size_t VectorSize = 32 / sizeof(T);
+
+    static VectorType setZero() { return _mm256_setzero_pd(); }
+    static VectorType load(const T* ptr) { return _mm256_loadu_pd(ptr); }
+    static VectorType multiply(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_pd(a, b, c); }
+    static T sum(VectorType v) {
+        v = _mm256_hadd_pd(v, _mm256_permute2f128_pd(v, v, 1));
+        v = _mm256_hadd_pd(v, v);
+        return _mm_cvtsd_f64(_mm256_castpd256_pd128(v));
+    }
+    static VectorType process(VectorType va, VectorType vb, VectorType acc) {
+        return multiply(va, vb, acc);
     }
 };
 
 template <typename T>
 requires (std::is_integral_v<T> && sizeof(T) == 4)
 struct AVX2Traits<T> {
+    static constexpr bool AVX2Supported = true;
     using VectorType = __m256i;
-    static constexpr size_t VectorSize = 8;
+    static constexpr size_t VectorSize = 32 / sizeof(T);
 
     static VectorType setZero() { return _mm256_setzero_si256(); }
-    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
+    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const VectorType*>(ptr)); }
     static VectorType multiply(VectorType a, VectorType b) { return _mm256_mullo_epi32(a, b); }
     static T sum(VectorType v) {
-        alignas(32) T temp[8];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(temp), v);
-        return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
+        v = _mm256_hadd_epi32(v, v);
+        v = _mm256_hadd_epi32(v, v);
+
+        alignas(32) T result[8];
+        _mm256_store_si256(reinterpret_cast<VectorType*>(result), v);
+
+        return result[0] + result[4];
+    }
+    static VectorType process(VectorType va, VectorType vb, VectorType acc) {
+        VectorType product = multiply(va, vb);
+        return _mm256_add_epi32(acc, product);
     }
 };
 
 template <typename T>
 requires (std::is_integral_v<T> && sizeof(T) == 8)
 struct AVX2Traits<T> {
+    static constexpr bool AVX2Supported = true;
     using VectorType = __m256i;
-    static constexpr size_t VectorSize = 4;
+    static constexpr size_t VectorSize = 32 / sizeof(T);
 
     static VectorType setZero() { return _mm256_setzero_si256(); }
-    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
-
+    static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const VectorType*>(ptr)); }
     static VectorType multiply(VectorType a, VectorType b) {
         const VectorType b_swap        = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1));                      // swap H<->L
         const VectorType crossprod     = _mm256_mullo_epi32(a, b_swap);                                         // 32-bit L*H and H*L cross-products
-
         const VectorType prodlh        = _mm256_slli_epi64(crossprod, 32);                                      // bring the low half up to the top of each 64-bit chunk
         const VectorType prodhl        = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000));   // isolate the other, also into the high half were it needs to eventually be
         const VectorType sumcross      = _mm256_add_epi32(prodlh, prodhl);                                      // the sum of the cross products, with the low half of each u64 being 0.
-
         const VectorType prodll        = _mm256_mul_epu32(a, b);                                                // widening 32x32 => 64-bit  low x low products
         const VectorType prod          = _mm256_add_epi32(prodll, sumcross);                                    // add the cross products into the high half of the result
         return prod;
@@ -572,45 +560,18 @@ struct AVX2Traits<T> {
     static T sum(VectorType v) {
         const __m128i low128 = _mm256_extracti128_si256(v, 0);
         const __m128i high128 = _mm256_extracti128_si256(v, 1);
-
         const __m128i sum128 = _mm_add_epi64(low128, high128);
-
         return _mm_cvtsi128_si64(sum128) + _mm_extract_epi64(sum128, 1);
     }
-};
-
-template <>
-struct AVX2Traits<float> {
-    using VectorType = __m256;
-    static constexpr size_t VectorSize = 8;
-
-    static VectorType setZero() { return _mm256_setzero_ps(); }
-    static VectorType load(const float* ptr) { return _mm256_loadu_ps(ptr); }
-    static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_ps(a, b, c); }
-    static float sum(VectorType v) {
-        float temp[8];
-        _mm256_storeu_ps(temp, v);
-        return temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
-    }
-};
-
-template <>
-struct AVX2Traits<double> {
-    using VectorType = __m256d;
-    static constexpr size_t VectorSize = 4;
-
-    static VectorType setZero() { return _mm256_setzero_pd(); }
-    static VectorType load(const double* ptr) { return _mm256_loadu_pd(ptr); }
-    static VectorType fmadd(VectorType a, VectorType b, VectorType c) { return _mm256_fmadd_pd(a, b, c); }
-    static double sum(VectorType v) {
-        double temp[4];
-        _mm256_storeu_pd(temp, v);
-        return temp[0] + temp[1] + temp[2] + temp[3];
+    static VectorType process(VectorType va, VectorType vb, VectorType acc) {
+        auto product = multiply(va, vb);
+        return _mm256_add_epi64(acc, product);
     }
 };
 
 template <typename T>
-T avx2_dot_product(const T* a, const T* b, size_t size) {
+requires (AVX2Traits<T>::AVX2Supported)
+T AVX2DotProduct(const T* a, const T* b, size_t size) {
     using Traits = AVX2Traits<T>;
     using VectorType = typename Traits::VectorType;
     VectorType acc = Traits::setZero();
@@ -620,18 +581,7 @@ T avx2_dot_product(const T* a, const T* b, size_t size) {
     for (; k + vecSize <= size; k += vecSize) {
         VectorType va = Traits::load(&a[k]);
         VectorType vb = Traits::load(&b[k]);
-        if constexpr (std::is_floating_point_v<T>) {
-            acc = Traits::fmadd(va, vb, acc);
-        } else if constexpr (std::is_integral_v<T>) {
-            VectorType product = Traits::multiply(va, vb);
-            if constexpr (sizeof(T) == 4) {
-                acc = _mm256_add_epi32(acc, product);
-            } else if constexpr (sizeof(T) == 8) {
-                acc = _mm256_add_epi64(acc, product);
-            } else {
-                static_assert(false, "Unreachable");
-            }
-        }
+        acc = Traits::process(va, vb, acc);
     }
 
     T result = Traits::sum(acc);
@@ -642,7 +592,7 @@ T avx2_dot_product(const T* a, const T* b, size_t size) {
 }
 
 template <typename T>
-requires AVX2Supported<T>
+requires (AVX2Traits<T>::AVX2Supported)
 TMatrix<T> BestMultiplyMultithread(const TMatrix<T>& matrix1, const TMatrix<T>& matrix2, size_t block_size = 64) {
     if (matrix1.Cols() != matrix2.Rows()) {
         throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
@@ -666,7 +616,7 @@ TMatrix<T> BestMultiplyMultithread(const TMatrix<T>& matrix1, const TMatrix<T>& 
                             for (size_t i = ib, end_i = std::min(ib + block_size, N); i < end_i; ++i) {
                                 for (size_t j = jb, end_j = std::min(jb + block_size, M); j < end_j; ++j) {
                                     size_t count = std::min(block_size, K - kb);
-                                    result[i][j] += avx2_dot_product(&(matrix1[i][kb]), &(transposed_matrix2[j][kb]), count);;
+                                    result[i][j] += AVX2DotProduct(&(matrix1[i][kb]), &(transposed_matrix2[j][kb]), count);
                                 }
                             }
                         }
