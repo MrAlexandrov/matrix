@@ -725,26 +725,20 @@ TMatrix<T> FastPower(const TMatrix<T>& matrix, unsigned degree) {
     if (matrix.Rows() != matrix.Cols()) {
         throw std::invalid_argument("Matrix should be square for exponentiation.");
     }
-    if (degree == 0) {
-        size_t n = matrix.Rows();
-        TMatrix<T> identity(n, n, T{0});
-        for (size_t i = 0; i < n; ++i) {
-            identity[i][i] = T{1};
-        }
-        return identity;
+    size_t n = matrix.Rows();
+    TMatrix<T> result(n, n, T{0});
+    for (size_t i = 0; i < n; ++i) {
+        result[i][i] = T{1};
     }
 
-    TMatrix<T> result = TMatrix<T>(matrix);
     TMatrix<T> base = matrix;
-    unsigned power = degree - 1;
-
-    while (power > 0) {
-        // same as (power % 2 == 1)
-        if (static_cast<bool>(power & 1)) {
+    while (degree > 0) {
+        // same as (degree % 2 == 1)
+        if (static_cast<bool>(degree & 1)) {
             result *= base;
         }
         base *= base;
-        power >>= 1;
+        degree >>= 1;
     }
 
     return result;
@@ -755,19 +749,13 @@ TMatrix<T> SlowPower(const TMatrix<T>& matrix, unsigned degree) {
     if (matrix.Rows() != matrix.Cols()) {
         throw std::invalid_argument("Matrix should be square for exponentiation.");
     }
-
-    if (degree == 0) {
-        size_t n = matrix.Rows();
-        TMatrix<T> identity(n, n, T{0});
-        for (size_t i = 0; i < n; ++i) {
-            identity[i][i] = T{1};
-        }
-        return identity;
+    size_t n = matrix.Rows();
+    TMatrix<T> result(n, n, T{0});
+    for (size_t i = 0; i < n; ++i) {
+        result[i][i] = T{1};
     }
 
-    TMatrix<T> result = matrix;
-
-    for (unsigned i = 1; i < degree; ++i) {
+    for (unsigned i = 0; i < degree; ++i) {
         result = result * matrix;
     }
 
