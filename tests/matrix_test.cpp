@@ -236,6 +236,26 @@ TYPED_TEST(MatrixOperationsTest, MultiplicationCorrect) {
     EXPECT_EQ(result, expected);
 }
 
+TYPED_TEST(MatrixOperationsTest, MultiplicationEqual) {
+    using T = TypeParam;
+    TMatrix<T> matrix1{
+        {2, -3, 1},
+        {5, 4, -2}
+    };
+    const TMatrix<T> matrix2{
+        {-7, 5},
+        {2, -1},
+        {4, 3}
+    };
+    matrix1 *= matrix2;
+
+    const TMatrix<T> expected{
+        {-16, 16},
+        {-35, 15}
+    };
+    EXPECT_EQ(matrix1, expected);
+}
+
 TEST(MatrixOperationsTest, MultiplicationCorrectBig) {
     const TMatrix<int> matrix{
         {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29},
@@ -305,6 +325,32 @@ TEST(MatrixOperationsTest, MultiplicationCorrectBig) {
     };
 
     EXPECT_EQ(result, expected);
+}
+
+TYPED_TEST(MatrixOperationsTest, BlockMultiplyWithTransposeIncorrect) {
+    using T = TypeParam;
+    const TMatrix<T> a = {
+        {1,},
+    };
+    const TMatrix<T> b ={
+        {2, 2,},
+        {2, 2,},
+    };
+    EXPECT_THROW(BlockMultiplyWithTranspose(a, b), std::invalid_argument);
+}
+
+TYPED_TEST(MatrixOperationsTest, BestMultiplyMultithreadIncorrect) {
+    using T = TypeParam;
+    const TMatrix<T> a = {
+        {1,},
+    };
+    const TMatrix<T> b ={
+        {2, 2,},
+        {2, 2,},
+    };
+    if constexpr (AVX2Supported<T>) {
+        EXPECT_THROW(BestMultiplyMultithread(a, b), std::invalid_argument);
+    }
 }
 
 TYPED_TEST(MatrixOperationsTest, MultiplicationCompare) {
@@ -526,19 +572,19 @@ TYPED_TEST(MatrixSpecialFunctionsTest, Equality) {
     EXPECT_FALSE(matrix1 == matrix3);
 }
 
-// TYPED_TEST(MatrixSpecialFunctionsTest, Printing) {
-//     using T = TypeParam;
-//     const TMatrix<T> matrix(2, 3, 1);
+TYPED_TEST(MatrixSpecialFunctionsTest, Printing) {
+    using T = TypeParam;
+    const TMatrix<T> matrix(2, 3, 1);
 
-//     std::stringstream output;
-//     output << matrix;
+    std::stringstream output;
+    output << matrix;
 
-//     const std::string expected_output =
-//         "1 1 1 \n"
-//         "1 1 1 \n";
+    const std::string expected_output =
+        "1 1 1 \n"
+        "1 1 1 \n";
 
-//     EXPECT_EQ(output.str(), expected_output);
-// }
+    EXPECT_EQ(output.str(), expected_output);
+}
 
 TYPED_TEST(MatrixSpecialFunctionsTest, GetRowOutOfRange) {
     using T = TypeParam;
@@ -684,7 +730,8 @@ TEST(MatrixSpecialFunctionsTest, SlowPowerZero) {
     EXPECT_EQ(result, expected_output);
 }
 
-TEST(MatrixSpecialFunctionsTest, FastPowerIncorrect) {
+TYPED_TEST(MatrixSpecialFunctionsTest, FastPowerIncorrect) {
+    using T = TypeParam;
     const TMatrix<int> matrix{
         {1, 2, 3},
         {4, 5, 6}
@@ -692,7 +739,8 @@ TEST(MatrixSpecialFunctionsTest, FastPowerIncorrect) {
     EXPECT_THROW(FastPower(matrix, 7), std::invalid_argument);
 }
 
-TEST(MatrixSpecialFunctionsTest, SlowPowerIncorrect) {
+TYPED_TEST(MatrixSpecialFunctionsTest, SlowPowerIncorrect) {
+    using T = TypeParam;
     const TMatrix<int> matrix{
         {1, 2, 3},
         {4, 5, 6}

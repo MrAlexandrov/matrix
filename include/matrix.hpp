@@ -290,8 +290,6 @@ TMatrix<T>& TMatrix<T>::operator*=(const TMatrix<T>& other) {
         throw std::invalid_argument("Matrix dimensions are not suitable for multiplication");
     }
 
-    // *this = BlockAndParallelMultiply(*this, other);
-    // *this = BestMultiplyMultithread(*this, other);
     if constexpr (AVX2Supported<T>) {
         *this = BestMultiplyMultithread(*this, other);
     } else {
