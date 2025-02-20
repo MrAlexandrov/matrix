@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 #include <stdexcept>
 #include <vector>
+#include <random>
 #include "../include/matrix.hpp"
 
 namespace NMatrix {
@@ -304,6 +305,29 @@ TEST(MatrixOperationsTest, MultiplicationCorrectBig) {
     };
 
     EXPECT_EQ(result, expected);
+}
+
+TYPED_TEST(MatrixOperationsTest, MultiplicationCompare) {
+    using T = TypeParam;
+    auto GenerateMatrix = [](int rows, int cols) -> NMatrix::TMatrix<T> {
+        std::random_device rd;
+        std::mt19937 gen{static_cast<std::mt19937>(rd())};
+        std::uniform_int_distribution<> dist{-100, 100};
+        NMatrix::TMatrix<T> result(rows, cols);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                result[i][j] = dist(gen);
+            }
+        }
+        return result;
+    };
+    int n = 1000;
+    int m = 1000;
+    auto first = GenerateMatrix(n, m);
+    auto second = GenerateMatrix(n, m);
+    if constexpr (AVX2Supported<T>) {
+        EXPECT_EQ(BestMultiplyMultithread(first, second), BlockMultiplyWithTranspose(first, second));
+    }
 }
 
 TYPED_TEST(MatrixOperationsTest, MultiplicationIncorrect) {
