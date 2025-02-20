@@ -661,13 +661,13 @@ struct AVX2Traits<T> {
     static VectorType load(const T* ptr) { return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)); }
 
     static VectorType multiply(VectorType a, VectorType b) {
-        __m256i b_swap      = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1)); // Swap H<->L
-        __m256i crossprod   = _mm256_mullo_epi32(a, b_swap);                    // 32-bit L*H and H*L cross-products
-        __m256i prodlh      = _mm256_slli_epi64(crossprod, 32);                 // Shift left, moving to correct position
-        __m256i prodhl      = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000)); // Isolate H*L
-        __m256i sumcross    = _mm256_add_epi64(prodlh, prodhl);                  // Sum cross-products
-        __m256i prodll      = _mm256_mul_epu32(a, b);                           // Low x Low (widening 32x32 => 64-bit)
-        __m256i result      = _mm256_add_epi64(prodll, sumcross);               // Add cross products
+        const __m256i b_swap      = _mm256_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1)); // Swap H<->L
+        const __m256i crossprod   = _mm256_mullo_epi32(a, b_swap);                    // 32-bit L*H and H*L cross-products
+        const __m256i prodlh      = _mm256_slli_epi64(crossprod, 32);                 // Shift left, moving to correct position
+        const __m256i prodhl      = _mm256_and_si256(crossprod, _mm256_set1_epi64x(0xFFFFFFFF00000000)); // Isolate H*L
+        const __m256i sumcross    = _mm256_add_epi64(prodlh, prodhl);                  // Sum cross-products
+        const __m256i prodll      = _mm256_mul_epu32(a, b);                           // Low x Low (widening 32x32 => 64-bit)
+        const __m256i result      = _mm256_add_epi64(prodll, sumcross);               // Add cross products
         return result;
     }
     static T sum(VectorType v) {
