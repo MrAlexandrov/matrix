@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+
+jobs:
+  posix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            compiler: clang-18
+            make: test
+            info: 'clang-18 + test'
+
+    name: '${{ matrix.os }}: ${{ matrix.info }}'
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          make install
+
+      - name: Build and test project
+        run: |
+          make ${{ matrix.make }}
+
+      - name: Clean build artifacts
+        if: always()
+        run: |
+          make clean
